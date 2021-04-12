@@ -97,6 +97,10 @@ public class MQClientInstance {
     private final NettyClientConfig nettyClientConfig;
     private final MQClientAPIImpl mQClientAPIImpl;
     private final MQAdminImpl mQAdminImpl;
+    /**
+     * 维护了当前客户端订阅的topic，以及topic关联的路由元信息
+     * 更新点：{@link MQClientInstance#updateTopicRouteInfoFromNameServer(java.lang.String, boolean, org.apache.rocketmq.client.producer.DefaultMQProducer)}
+     */
     private final ConcurrentMap<String/* Topic */, TopicRouteData> topicRouteTable = new ConcurrentHashMap<String, TopicRouteData>();
     private final Lock lockNamesrv = new ReentrantLock();
     private final Lock lockHeartbeat = new ReentrantLock();
@@ -1040,6 +1044,9 @@ public class MQClientInstance {
         return null;
     }
 
+    /**
+     * 从本地订阅信息中找broker地址
+     */
     public FindBrokerResult findBrokerAddressInSubscribe(
         final String brokerName,
         final long brokerId,
@@ -1052,6 +1059,7 @@ public class MQClientInstance {
         HashMap<Long/* brokerId */, String/* address */> map = this.brokerAddrTable.get(brokerName);
         if (map != null && !map.isEmpty()) {
             brokerAddr = map.get(brokerId);
+            // 区分主从的标致：brokerId是不是0L
             slave = brokerId != MixAll.MASTER_ID;
             found = brokerAddr != null;
 
@@ -1086,12 +1094,14 @@ public class MQClientInstance {
     }
 
     public List<String> findConsumerIdList(final String topic, final String group) {
+        // 根据topic找broker地址，找不到就更新下继续找
         String brokerAddr = this.findBrokerAddrByTopic(topic);
         if (null == brokerAddr) {
             this.updateTopicRouteInfoFromNameServer(topic);
             brokerAddr = this.findBrokerAddrByTopic(topic);
         }
 
+        // 找到地址后，就发送请求获取下对应的消费者列表
         if (null != brokerAddr) {
             try {
                 return this.mQClientAPIImpl.getConsumerIdListByGroup(brokerAddr, group, 3000);
@@ -1100,9 +1110,15 @@ public class MQClientInstance {
             }
         }
 
+        // 找不到地址就直接返回null
         return null;
     }
 
+    /**
+     * 获取topic下对应的路由信息，随机选一个BrokerData
+     * 然后在BrokerData中返回主地址，如果主不存在，随机选一个从broker出来返回其地址
+     * 都选不到就返回null
+     */
     public String findBrokerAddrByTopic(final String topic) {
         TopicRouteData topicRouteData = this.topicRouteTable.get(topic);
         if (topicRouteData != null) {

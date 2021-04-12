@@ -44,6 +44,7 @@ import java.util.concurrent.ConcurrentMap;
 public abstract class RebalanceImpl {
     protected static final InternalLogger log = ClientLogger.getLog();
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
+    // 维护当前消费者订阅的topic下所有的队列
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
         new ConcurrentHashMap<String, Set<MessageQueue>>();
     protected final ConcurrentMap<String /* topic */, SubscriptionData> subscriptionInner =
@@ -214,6 +215,7 @@ public abstract class RebalanceImpl {
         }
     }
 
+    // 获取当前订阅的topic和订阅信息，遍历处理
     public void doRebalance(final boolean isOrder) {
         Map<String, SubscriptionData> subTable = this.getSubscriptionInner();
         if (subTable != null) {
@@ -256,10 +258,10 @@ public abstract class RebalanceImpl {
                 break;
             }
             case CLUSTERING: {
-                // topicSubscribeInfoTable的信息在消费者启动时进行了设置
-                // 代码入口 DefaultMQPushConsumerImpl.updateTopicSubscribeInfoWhenSubscriptionChanged
-                // 代表了当前的分配情况。后面的逻辑需要根据broker中的消费者列表进行重新分配
+                // topicSubscribeInfoTable的信息在消费者启动时进行了设置，代码入口 DefaultMQPushConsumerImpl.updateTopicSubscribeInfoWhenSubscriptionChanged
+                // 代表了当前的topic下所有的MessageQueue。后面的逻辑需要根据broker中的消费者列表进行重新分配
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
+                // 获取当前topic 消费组consumerGroup下所有的消费者id
                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
                 if (null == mqSet) {
                     if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
@@ -271,6 +273,7 @@ public abstract class RebalanceImpl {
                     log.warn("doRebalance, {} {}, get consumer id list failed", consumerGroup, topic);
                 }
 
+                // 当队列和消费者都存在时做一下重平衡
                 if (mqSet != null && cidAll != null) {
                     List<MessageQueue> mqAll = new ArrayList<MessageQueue>();
                     mqAll.addAll(mqSet);
@@ -300,14 +303,14 @@ public abstract class RebalanceImpl {
                         allocateResultSet.addAll(allocateResult);
                     }
 
-                    // 更新分配结果
+                    // 根据分配结果进行更新。如果变动了就返回true，触发后续的变动逻辑
                     boolean changed = this.updateProcessQueueTableInRebalance(topic, allocateResultSet, isOrder);
                     if (changed) {
                         log.info(
                             "rebalanced result changed. allocateMessageQueueStrategyName={}, group={}, topic={}, clientId={}, mqAllSize={}, cidAllSize={}, rebalanceResultSize={}, rebalanceResultSet={}",
                             strategy.getName(), consumerGroup, topic, this.mQClientFactory.getClientId(), mqSet.size(), cidAll.size(),
                             allocateResultSet.size(), allocateResultSet);
-                        // 处理变动。目前好像只有留空和心跳。
+                        // 处理变动。对于PushRebalanceImpl调整流控和心跳。
                         this.messageQueueChanged(topic, mqSet, allocateResultSet);
                     }
                 }
@@ -342,6 +345,7 @@ public abstract class RebalanceImpl {
                                                        final boolean isOrder) {
         boolean changed = false;
 
+        // 获取当前客户端处理的队列
         Iterator<Entry<MessageQueue, ProcessQueue>> it = this.processQueueTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<MessageQueue, ProcessQueue> next = it.next();
@@ -352,6 +356,7 @@ public abstract class RebalanceImpl {
                 // 如果新分配后，不包含这个MessageQueue了，就标记对应的ProcessQueue 为drop
                 if (!mqSet.contains(mq)) {
                     pq.setDropped(true);
+                    // 当真的删掉了，才标记变化了
                     if (this.removeUnnecessaryMessageQueue(mq, pq)) {
                         it.remove();
                         changed = true;
@@ -361,7 +366,7 @@ public abstract class RebalanceImpl {
                     switch (this.consumeType()) {
                         case CONSUME_ACTIVELY:
                             break;
-                        case CONSUME_PASSIVELY:
+                        case CONSUME_PASSIVELY: // TODO 为什么这种情况也需要删除
                             pq.setDropped(true);
                             if (this.removeUnnecessaryMessageQueue(mq, pq)) {
                                 it.remove();
@@ -381,14 +386,16 @@ public abstract class RebalanceImpl {
         for (MessageQueue mq : mqSet) {
             // 新分配的mq，创建ProcessQueue进行关联。
             if (!this.processQueueTable.containsKey(mq)) {
+                // 对于顺序消费者，总是需要锁定才可以继续操作 TODO 为什么要锁
                 if (isOrder && !this.lock(mq)) {
                     log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
                     continue;
                 }
 
+                // 删除被删除mq的偏移
                 this.removeDirtyOffset(mq);
                 ProcessQueue pq = new ProcessQueue();
-                long nextOffset = this.computePullFromWhere(mq);
+                long nextOffset = this.computePullFromWhere(mq); // TODO 研究这里的逻辑，底层是需要研究ProcessQueue里面的各种状态
                 if (nextOffset >= 0) {
                     ProcessQueue pre = this.processQueueTable.putIfAbsent(mq, pq);
                     if (pre != null) {

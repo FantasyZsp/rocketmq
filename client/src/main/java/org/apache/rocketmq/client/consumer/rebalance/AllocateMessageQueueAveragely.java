@@ -53,7 +53,8 @@ public class AllocateMessageQueueAveragely implements AllocateMessageQueueStrate
         }
 
         List<MessageQueue> result = new ArrayList<MessageQueue>();
-        // 如果列表中没有当前消费者，就不需要做任何操作。之所以会不包含，是因为外部拿到所有的topic映射关系遍历。
+        // 如果列表中没有当前消费者，就不需要做任何操作。
+        // 之所以会不包含，是因为外部拿到所有的topic映射关系遍历。
         if (!cidAll.contains(currentCID)) {
             log.info("[BUG] ConsumerGroup: {} The consumerId: {} not in cidAll: {}",
                 consumerGroup,
