@@ -75,6 +75,9 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
         this.consumerGroup = this.defaultMQPushConsumer.getConsumerGroup();
         this.consumeRequestQueue = new LinkedBlockingQueue<Runnable>();
 
+        // 如果一个消费者只监听一个topic，有必要开多线程吗？
+        //  ConsumeMessageOrderlyService.ConsumeRequest.run中为每个mq都加了把锁。mq对应了queueId。如果queue有多个，还是可以并行消费的。此时只要保障数据在queueId上有序即可。
+        //  如果说一个topic仅一个queueId，那就没必要开多个线程。实际上线程数对应上topic里的queue个数就好了。一个线程负责一个queue
         this.consumeExecutor = new ThreadPoolExecutor(
             this.defaultMQPushConsumer.getConsumeThreadMin(),
             this.defaultMQPushConsumer.getConsumeThreadMax(),
@@ -439,7 +442,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
 
             // 每个mq对应有一把锁
             final Object objLock = messageQueueLock.fetchLockObject(this.messageQueue);
-            synchronized (objLock) {
+            synchronized (objLock) { // 加锁，保证只有一个线程在处理pq的消费
                 // 如果是广播模式，或者 pq已经上锁且锁没有过期才进行处理
                 if (MessageModel.BROADCASTING.equals(ConsumeMessageOrderlyService.this.defaultMQPushConsumerImpl.messageModel())
                     || (this.processQueue.isLocked() && !this.processQueue.isLockExpired())) {

@@ -214,6 +214,10 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         this.offsetStore = offsetStore;
     }
 
+    /**
+     * 拉取消息。注意：这个方法一旦有了开头，就会无限自行的调用，直到rebalance触发，可能会摘掉一些节点；但也可能添加一些节点。
+     * 任何return前，一定有一个拉取任务投递；任何异常处理后，一定也保证投递拉取任务。
+     */
     public void pullMessage(final PullRequest pullRequest) {
         final ProcessQueue processQueue = pullRequest.getProcessQueue();
         if (processQueue.isDropped()) {

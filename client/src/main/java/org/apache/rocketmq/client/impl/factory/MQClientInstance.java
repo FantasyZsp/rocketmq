@@ -103,7 +103,9 @@ public class MQClientInstance {
     private final MQAdminImpl mQAdminImpl;
     /**
      * 维护了当前客户端订阅的topic，以及topic关联的路由元信息
-     * 更新点：{@link MQClientInstance#updateTopicRouteInfoFromNameServer(java.lang.String, boolean, org.apache.rocketmq.client.producer.DefaultMQProducer)}
+     * 更新点：启动后{@link DefaultMQPushConsumerImpl#updateTopicSubscribeInfoWhenSubscriptionChanged()}\
+     * -> {@link MQClientInstance#updateTopicRouteInfoFromNameServer(java.lang.String)}
+     * -> {@link MQClientInstance#updateTopicRouteInfoFromNameServer(java.lang.String, boolean, org.apache.rocketmq.client.producer.DefaultMQProducer)}
      */
     private final ConcurrentMap<String/* Topic */, TopicRouteData> topicRouteTable = new ConcurrentHashMap<String, TopicRouteData>();
     private final Lock lockNamesrv = new ReentrantLock();

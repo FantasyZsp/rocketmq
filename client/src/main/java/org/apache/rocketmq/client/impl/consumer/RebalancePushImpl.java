@@ -88,7 +88,7 @@ public class RebalancePushImpl extends RebalanceImpl {
         this.defaultMQPushConsumerImpl.getOffsetStore().persist(mq);
         // 摘除维护的mq
         this.defaultMQPushConsumerImpl.getOffsetStore().removeOffset(mq);
-        // 对于顺序消费，需要解锁对应的mq，成功解锁后才认为是删除掉了。
+        // 对于顺序消费，需要解锁对应的mq，成功解锁后才认为是删除掉了。否则锁持有期间，其他消费者无法操作。
         if (this.defaultMQPushConsumerImpl.isConsumeOrderly()
             && MessageModel.CLUSTERING.equals(this.defaultMQPushConsumerImpl.messageModel())) {
             try {

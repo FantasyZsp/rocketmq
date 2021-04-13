@@ -44,10 +44,14 @@ import java.util.concurrent.ConcurrentMap;
 public abstract class RebalanceImpl {
     protected static final InternalLogger log = ClientLogger.getLog();
     /**
-     * 初始化点 doRebalance->rebalanceByTopic -> updateProcessQueueTableInRebalance
+     * 初始化点，启动时调用this.mQClientFactory.rebalanceImmediately() -> 唤醒 RebalanceService-> run -> doRebalance->rebalanceByTopic -> updateProcessQueueTableInRebalance
      */
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
     // 维护当前消费者订阅的topic下所有的队列
+    /**
+     * 启动更新点：{@link DefaultMQPushConsumerImpl#updateTopicSubscribeInfoWhenSubscriptionChanged()} -> {@link MQClientInstance#updateTopicRouteInfoFromNameServer(java.lang.String)}
+     * -> {@link MQConsumerInner#updateTopicSubscribeInfo(java.lang.String, java.util.Set)}
+     */
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
         new ConcurrentHashMap<String, Set<MessageQueue>>();
     protected final ConcurrentMap<String /* topic */, SubscriptionData> subscriptionInner =
@@ -169,7 +173,8 @@ public abstract class RebalanceImpl {
     }
 
     /**
-     * TODO 加锁的目的是什么
+     * 加锁的目的是什么？
+     * 当多个消费者有序消费同个topic时，对topic下queue的操作必要归属到一个消费者上。否则出现乱序并发，保证不了顺序。因此需要加锁
      */
     public void lockAll() {
         // processQueueTable 拿到 brokerName -> mq的映射
@@ -396,6 +401,7 @@ public abstract class RebalanceImpl {
         List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
         for (MessageQueue mq : mqSet) {
             // 新分配的mq，创建ProcessQueue进行关联。
+            // 应用第一次启动时到这里还是没有值的，因此构建了第一批 负责的所有mq拉取请求。
             if (!this.processQueueTable.containsKey(mq)) {
                 // 到broker上锁定此mq
                 if (isOrder && !this.lock(mq)) {
