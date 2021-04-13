@@ -366,7 +366,7 @@ public abstract class RebalanceImpl {
                     switch (this.consumeType()) {
                         case CONSUME_ACTIVELY:
                             break;
-                        case CONSUME_PASSIVELY: // TODO 为什么这种情况也需要删除
+                        case CONSUME_PASSIVELY: // 如果拉取超时，对于PUSHConsumer来说，视为拉取出问题了，需要摘除节点等待下次调度时修复。
                             pq.setDropped(true);
                             if (this.removeUnnecessaryMessageQueue(mq, pq)) {
                                 it.remove();

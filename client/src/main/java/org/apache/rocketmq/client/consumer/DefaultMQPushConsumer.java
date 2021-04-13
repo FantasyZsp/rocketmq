@@ -214,6 +214,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
 
     /**
      * Message pull Interval
+     * 消息拉取间隔，再一次拉取完成后，距离下次拉取的时间间隔
      */
     private long pullInterval = 0;
 

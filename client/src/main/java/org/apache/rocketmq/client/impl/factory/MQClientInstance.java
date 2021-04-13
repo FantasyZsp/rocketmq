@@ -92,6 +92,10 @@ public class MQClientInstance {
     private final String clientId;
     private final long bootTimestamp = System.currentTimeMillis();
     private final ConcurrentMap<String/* group */, MQProducerInner> producerTable = new ConcurrentHashMap<String, MQProducerInner>();
+    /**
+     * 维护消费组到消费者的映射关系。
+     * 写：通过MQClientInstance#registerConsumer方法。
+     */
     private final ConcurrentMap<String/* group */, MQConsumerInner> consumerTable = new ConcurrentHashMap<String, MQConsumerInner>();
     private final ConcurrentMap<String/* group */, MQAdminExtInner> adminExtTable = new ConcurrentHashMap<String, MQAdminExtInner>();
     private final NettyClientConfig nettyClientConfig;
@@ -251,7 +255,10 @@ public class MQClientInstance {
                     // 启动负载均衡服务。内部还是调用了RebalanceImpl
                     this.rebalanceService.start();
                     // Start push service
-                    // TODO 消费者为什么会有这个？
+
+                    /**
+                     * {@link ProcessQueue#cleanExpiredMsg}  消费者为什么会有这个？ 场景1：清理过期消息时，发回broker可能用到。
+                     */
                     // 每个mq的消费者和生产者创建时都会创建关联对应的 MQClientInstance，每个MQClientInstance都有defaultMQProducer。需要考察作用
                     this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
                     log.info("the client factory [{}] start OK", this.clientId);
