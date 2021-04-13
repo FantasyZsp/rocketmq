@@ -243,7 +243,9 @@ public class ProcessQueue {
     }
 
     /**
-     * 从msgTreeMap中删除给定的msgs，返回下一个待处理的偏移量。也就是消费进度
+     * 从msgTreeMap中删除给定的msgs，返回下一个待处理的偏移量。也就是消费进度。
+     * 对于msgTreeMap全部删完的情况，result = this.queueOffsetMax + 1，即最大偏移量再加1
+     * 对于没有全部删完的情况，result = msgTreeMap.firstKey()，即msgs中偏移量最小的那个。
      */
     public long removeMessage(final List<MessageExt> msgs) {
         long result = -1;
