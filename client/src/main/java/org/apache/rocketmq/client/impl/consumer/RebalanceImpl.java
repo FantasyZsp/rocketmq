@@ -43,6 +43,9 @@ import java.util.concurrent.ConcurrentMap;
 
 public abstract class RebalanceImpl {
     protected static final InternalLogger log = ClientLogger.getLog();
+    /**
+     * 初始化点 doRebalance->rebalanceByTopic -> updateProcessQueueTableInRebalance
+     */
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
     // 维护当前消费者订阅的topic下所有的队列
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
@@ -165,7 +168,11 @@ public abstract class RebalanceImpl {
         return false;
     }
 
+    /**
+     * TODO 加锁的目的是什么
+     */
     public void lockAll() {
+        // processQueueTable 拿到 brokerName -> mq的映射
         HashMap<String, Set<MessageQueue>> brokerMqs = this.buildProcessQueueTableByBrokerName();
 
         Iterator<Entry<String, Set<MessageQueue>>> it = brokerMqs.entrySet().iterator();
@@ -177,6 +184,7 @@ public abstract class RebalanceImpl {
             if (mqs.isEmpty())
                 continue;
 
+            // 获取主 broker
             FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(brokerName, MixAll.MASTER_ID, true);
             if (findBrokerResult != null) {
                 LockBatchRequestBody requestBody = new LockBatchRequestBody();
@@ -195,6 +203,7 @@ public abstract class RebalanceImpl {
                                 log.info("the message queue locked OK, Group: {} {}", this.consumerGroup, mq);
                             }
 
+                            // 标记加锁成功的pq
                             processQueue.setLocked(true);
                             processQueue.setLastLockTimestamp(System.currentTimeMillis());
                         }
@@ -203,6 +212,7 @@ public abstract class RebalanceImpl {
                         if (!lockOKMQSet.contains(mq)) {
                             ProcessQueue processQueue = this.processQueueTable.get(mq);
                             if (processQueue != null) {
+                                // 标记没有加锁成功的pq
                                 processQueue.setLocked(false);
                                 log.warn("the message queue locked Failed, Group: {} {}", this.consumerGroup, mq);
                             }
@@ -279,6 +289,7 @@ public abstract class RebalanceImpl {
                     mqAll.addAll(mqSet);
 
                     // 根据 topic brokername 和queueId的顺序排序
+                    // 两个排序，使得分布式的消费者拿到的数据趋于一致，最终得到一致的分配结果。
                     Collections.sort(mqAll);
                     Collections.sort(cidAll);
 
@@ -345,7 +356,7 @@ public abstract class RebalanceImpl {
                                                        final boolean isOrder) {
         boolean changed = false;
 
-        // 获取当前客户端处理的队列
+        // 获取当前客户端处理的队列。启动时，这里是没有值的，后续会填充。
         Iterator<Entry<MessageQueue, ProcessQueue>> it = this.processQueueTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<MessageQueue, ProcessQueue> next = it.next();
@@ -386,7 +397,7 @@ public abstract class RebalanceImpl {
         for (MessageQueue mq : mqSet) {
             // 新分配的mq，创建ProcessQueue进行关联。
             if (!this.processQueueTable.containsKey(mq)) {
-                // 对于顺序消费者，总是需要锁定才可以继续操作 TODO 为什么要锁
+                // 到broker上锁定此mq
                 if (isOrder && !this.lock(mq)) {
                     log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
                     continue;
@@ -395,9 +406,9 @@ public abstract class RebalanceImpl {
                 // 删除被删除mq的偏移
                 this.removeDirtyOffset(mq);
                 ProcessQueue pq = new ProcessQueue();
-                long nextOffset = this.computePullFromWhere(mq); // TODO 研究这里的逻辑，底层是需要研究ProcessQueue里面的各种状态
+                long nextOffset = this.computePullFromWhere(mq); // 获取消费点位。优先从broker获取上次读取的偏移，如果没有，就按照语义获取。重试队列有特殊逻辑。
                 if (nextOffset >= 0) {
-                    ProcessQueue pre = this.processQueueTable.putIfAbsent(mq, pq);
+                    ProcessQueue pre = this.processQueueTable.putIfAbsent(mq, pq); // 维护 processQueueTable
                     if (pre != null) {
                         log.info("doRebalance, {}, mq already exists, {}", consumerGroup, mq);
                     } else {
@@ -407,15 +418,16 @@ public abstract class RebalanceImpl {
                         pullRequest.setNextOffset(nextOffset);
                         pullRequest.setMessageQueue(mq);
                         pullRequest.setProcessQueue(pq);
-                        pullRequestList.add(pullRequest);
+                        pullRequestList.add(pullRequest); // 对于新分配的mq，构建对应的 pullRequest。pullRequest重点关注 consumerGroup、偏移量，mq，pq等信息
                         changed = true;
                     }
-                } else {
+                } else {// 如果拉取偏移失败了，说明这个队列存在问题，不会添加到processQueueTable
                     log.warn("doRebalance, {}, add new mq failed, {}", consumerGroup, mq);
                 }
             }
         }
 
+        // 分发拉取请求，最终会投递到 拉取服务的阻塞队列中等待消费
         this.dispatchPullRequest(pullRequestList);
 
         return changed;
