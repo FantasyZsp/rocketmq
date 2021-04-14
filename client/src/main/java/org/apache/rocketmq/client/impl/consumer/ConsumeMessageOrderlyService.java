@@ -365,7 +365,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
             for (MessageExt msg : msgs) {
                 if (msg.getReconsumeTimes() >= getMaxReconsumeTimes()) {
                     MessageAccessor.setReconsumeTime(msg, String.valueOf(msg.getReconsumeTimes()));
-                    if (!sendMessageBack(msg)) { // 将超过重试次数的消息发回broker。broker会移到DLQ并移除这些消息
+                    if (!sendMessageBack(msg)) { // 将超过重试次数的消息发回broker。broker会移到DLQ并移除这些消息 TODO 查看broker如何处理发回的消息
 
                         suspend = true; // 如果没发成功，就标记suspend，外部会对这批消息进行重试。内部将消息+1
                         msg.setReconsumeTimes(msg.getReconsumeTimes() + 1);

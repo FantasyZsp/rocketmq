@@ -16,12 +16,13 @@
  */
 package org.apache.rocketmq.client.impl.producer;
 
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.rocketmq.client.common.ThreadLocalIndex;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.route.QueueData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class TopicPublishInfo {
     private boolean orderTopic = false;
@@ -66,6 +67,11 @@ public class TopicPublishInfo {
         this.haveTopicRouterInfo = haveTopicRouterInfo;
     }
 
+    /**
+     * 发送方负载均衡算法
+     * 如果传入了非空lastBrokerName，那么就在broker间轮询，本次选出的mq的broker和lastBrokerName不相同；且本次的mq，也是轮询拿到下标。
+     * 如果没传入lastBrokerName，仅轮询mq
+     */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
         if (lastBrokerName == null) {
             return selectOneMessageQueue();

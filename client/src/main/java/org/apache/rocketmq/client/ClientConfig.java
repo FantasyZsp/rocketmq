@@ -16,10 +16,6 @@
  */
 package org.apache.rocketmq.client;
 
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.message.MessageQueue;
@@ -29,15 +25,39 @@ import org.apache.rocketmq.remoting.common.RemotingUtil;
 import org.apache.rocketmq.remoting.netty.TlsSystemConfig;
 import org.apache.rocketmq.remoting.protocol.LanguageCode;
 
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Set;
+
 /**
  * Client Common configuration
  */
 public class ClientConfig {
     public static final String SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY = "com.rocketmq.sendMessageWithVIPChannel";
+    /**
+     * namesrvAddr，初始化时从系统环境中加载，后续可被用户指定值覆盖
+     */
     private String namesrvAddr = NameServerAddressUtils.getNameServerAddresses();
+    /**
+     * 客户端ip，优先选用ipV4.找到的所有的ipV4中，优先取不是127和192.168开头的，没找到符合的就选用最后找到的。
+     * ipV6选第一个。没选到退回到localhost等本机地址
+     */
     private String clientIP = RemotingUtil.getLocalAddress();
+    /**
+     * 默认从系统变量拿，拿不到用DEFAULT，用户可指定
+     */
     private String instanceName = System.getProperty("rocketmq.client.name", "DEFAULT");
+    /**
+     * TODO ING
+     */
     private int clientCallbackExecutorThreads = Runtime.getRuntime().availableProcessors();
+    /**
+     * https://github.com/apache/rocketmq/issues/1120
+     * 为topic加入了命名空间的概念。相同topic如果用了不同namespace，代表的还是不同的namespace
+     * 用法示例：
+     * 三个运行环境dev/beta/prod，topic相同，只需要配置namespace就可以很好的适应区分。
+     */
     protected String namespace;
     protected AccessChannel accessChannel = AccessChannel.LOCAL;
 
