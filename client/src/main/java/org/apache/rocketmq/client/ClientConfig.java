@@ -48,9 +48,6 @@ public class ClientConfig {
      * 默认从系统变量拿，拿不到用DEFAULT，用户可指定
      */
     private String instanceName = System.getProperty("rocketmq.client.name", "DEFAULT");
-    /**
-     * TODO ING
-     */
     private int clientCallbackExecutorThreads = Runtime.getRuntime().availableProcessors();
     /**
      * https://github.com/apache/rocketmq/issues/1120
@@ -75,6 +72,9 @@ public class ClientConfig {
     private int persistConsumerOffsetInterval = 1000 * 5;
     private long pullTimeDelayMillsWhenException = 1000;
     private boolean unitMode = false;
+    /**
+     * 唯一的名字，用户指定后，影响clientId的唯一性
+     */
     private String unitName;
     private boolean vipChannelEnabled = Boolean.parseBoolean(System.getProperty(SEND_MESSAGE_WITH_VIP_CHANNEL_PROPERTY, "false"));
 

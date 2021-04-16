@@ -25,6 +25,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class TopicPublishInfo {
+    /**
+     * 是否是顺序消息，赋值逻辑参考{@link org.apache.rocketmq.namesrv.processor.DefaultRequestProcessor#getRouteInfoByTopic}
+     * 此配置需要nameserver开启，并在KV配置里进行配置
+     */
     private boolean orderTopic = false;
     private boolean haveTopicRouterInfo = false;
     private List<MessageQueue> messageQueueList = new ArrayList<MessageQueue>();
@@ -71,6 +75,8 @@ public class TopicPublishInfo {
      * 发送方负载均衡算法
      * 如果传入了非空lastBrokerName，那么就在broker间轮询，本次选出的mq的broker和lastBrokerName不相同；且本次的mq，也是轮询拿到下标。
      * 如果没传入lastBrokerName，仅轮询mq
+     *
+     * @param lastBrokerName 上次的broker
      */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
         if (lastBrokerName == null) {

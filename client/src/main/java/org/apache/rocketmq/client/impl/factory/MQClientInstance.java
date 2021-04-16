@@ -631,6 +631,14 @@ public class MQClientInstance {
                 try {
                     TopicRouteData topicRouteData;
                     if (isDefault && defaultMQProducer != null) {
+
+                        /**
+                         *  查看nameServer为其创建路由信息的逻辑。
+                         *  broker启动时如果指定了可以自动创建topic，就把通过心跳把默认topic的信息注册到nameserver上，然后这里就会找到。
+                         *  如果不允许自动创建，这里还是会找不到。
+                         *
+                         * {@link org.apache.rocketmq.broker.topic.TopicConfigManager#TopicConfigManager(org.apache.rocketmq.broker.BrokerController)}
+                         */
                         topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey(),
                             1000 * 3);
                         if (topicRouteData != null) {
