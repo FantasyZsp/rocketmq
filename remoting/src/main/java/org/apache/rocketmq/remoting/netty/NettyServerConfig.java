@@ -18,9 +18,24 @@ package org.apache.rocketmq.remoting.netty;
 
 public class NettyServerConfig implements Cloneable {
     private int listenPort = 8888;
+    /**
+     * netty业务线程池数量
+     */
     private int serverWorkerThreads = 8;
+    /**
+     * Netty public 务线程池线程个数， Netty根据业务类型会创建不同的线程池，比如处理消息发送、消息消费、心跳检测等。
+     * 如果果该业务务类型未注册线程池， 由public线程池执行
+     */
     private int serverCallbackExecutorThreads = 0;
+    /**
+     * netty IO线程数
+     * 主要是 NameServer Brok 端解析请求、返回相应的线程个数
+     * 这类线程主要是处理网络请求的，解析请求包， 然后转发到各个业务线程池完成具体的业务操作，然后将结果再返回调用方
+     */
     private int serverSelectorThreads = 3;
+    /**
+     * send oneway 消息请求井发度（ Broker 端参数）
+     */
     private int serverOnewaySemaphoreValue = 256;
     private int serverAsyncSemaphoreValue = 64;
     private int serverChannelMaxIdleTimeSeconds = 120;
@@ -31,8 +46,8 @@ public class NettyServerConfig implements Cloneable {
 
     /**
      * make make install
-     *
-     *
+     * <p>
+     * <p>
      * ../glibc-2.10.1/configure \ --prefix=/usr \ --with-headers=/usr/include \
      * --host=x86_64-linux-gnu \ --build=x86_64-pc-linux-gnu \ --without-gd
      */
