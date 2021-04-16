@@ -624,6 +624,11 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 如果是第一次发送，那么对应的topic获取路由时会使用默认topic去broker上拿一份配置。（要求broker开启自动创建，否则是拿不到返回结果的）
+     * 拿到返回结果后，写入本地路由表，关联上要发送的真实的topic，认为broker已经创建。
+     * 在发送消息环节，broker会真的创建对应的topic
+     */
     public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault,
                                                       DefaultMQProducer defaultMQProducer) {
         try {
@@ -651,6 +656,8 @@ public class MQClientInstance {
                     } else {
                         topicRouteData = this.mQClientAPIImpl.getTopicRouteInfoFromNameServer(topic, 1000 * 3);
                     }
+
+                    // 第一次发送，这里会给出 defaultTopic的信息
                     if (topicRouteData != null) {
                         TopicRouteData old = this.topicRouteTable.get(topic);
                         boolean changed = topicRouteDataIsChange(old, topicRouteData);
@@ -669,6 +676,7 @@ public class MQClientInstance {
 
                             // Update Pub info
                             // 这里会更新topic信息到生产者路由map DefaultMQProducerImpl.topicPublishInfoTable
+                            // 对于第一次发送来说，这里会把broker配置的默认topic的配置关联到 真实的topic中，认为broker已经创建了。
                             {
                                 TopicPublishInfo publishInfo = topicRouteData2TopicPublishInfo(topic, topicRouteData);
                                 publishInfo.setHaveTopicRouterInfo(true);
@@ -832,6 +840,7 @@ public class MQClientInstance {
 
     }
 
+    // 第一次发新的topic会返回 true
     private boolean isNeedUpdateTopicRouteInfo(final String topic) {
         boolean result = false;
         {
