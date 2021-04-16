@@ -35,15 +35,30 @@ public class MappedFileQueue {
 
     private static final int DELETE_FILES_BATCH_MAX = 10;
 
+    /**
+     * 存储目录
+     */
     private final String storePath;
 
+    /**
+     * 单个文件的存储大小
+     */
     private final int mappedFileSize;
 
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
 
+    /**
+     * 创建mappedFile的服务类
+     */
     private final AllocateMappedFileService allocateMappedFileService;
 
+    /**
+     * 当前刷盘指针，指针前所有数据表示已经被持久化
+     */
     private long flushedWhere = 0;
+    /**
+     * 当前数据提交指针，内存中Bytebuffer的写指针
+     */
     private long committedWhere = 0;
 
     private volatile long storeTimestamp = 0;
@@ -74,6 +89,10 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 根据存储时间找文件。
+     * O(n)，需要遍历每个文件查看修改时间。
+     */
     public MappedFile getMappedFileByTime(final long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
 
@@ -472,6 +491,7 @@ public class MappedFileQueue {
                         this.mappedFileSize,
                         this.mappedFiles.size());
                 } else {
+                    // O(1)查找文件下标
                     int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
                     MappedFile targetFile = null;
                     try {
@@ -519,6 +539,9 @@ public class MappedFileQueue {
         return mappedFileFirst;
     }
 
+    /**
+     * 根据偏移量查找
+     */
     public MappedFile findMappedFileByOffset(final long offset) {
         return findMappedFileByOffset(offset, false);
     }

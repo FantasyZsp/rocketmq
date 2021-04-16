@@ -23,6 +23,7 @@ public class AppendMessageResult {
     // Return code
     private AppendMessageStatus status;
     // Where to start writing
+    // 消息开始写入的位置
     private long wroteOffset;
     // Write Bytes
     private int wroteBytes;
@@ -31,9 +32,11 @@ public class AppendMessageResult {
     // Message storage timestamp
     private long storeTimestamp;
     // Consume queue's offset(step by one)
+    // 消息消费队列的偏移，类似于数组下表。一次加1
     private long logicsOffset;
     private long pagecacheRT = 0;
 
+    // 消息条数
     private int msgNum = 1;
 
     public AppendMessageResult(AppendMessageStatus status) {
