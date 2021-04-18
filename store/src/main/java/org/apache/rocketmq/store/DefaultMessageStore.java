@@ -474,6 +474,9 @@ public class DefaultMessageStore implements MessageStore {
         return resultFuture;
     }
 
+    /**
+     * 存储消息入口
+     */
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
         // 角色、状态、权限约束检测

@@ -61,7 +61,7 @@ public class MappedFile extends ReferenceResource {
      */
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
     /**
-     * 当前内存映射文件的写指针，从0开始
+     * 当前写指针，从0开始。每当写入到 writeBuffer 或者 mappedByteBuffer 时会记录、
      */
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
     /**
@@ -79,7 +79,8 @@ public class MappedFile extends ReferenceResource {
     protected FileChannel fileChannel;
     /**
      * 堆内存 ByteBuffer 如果不为空，数据先将存储在这个Buffer中，然后提交到MappedFile对应的内存映射Buffer
-     * transientStorePoolEnable=true时不为空
+     * transientStorePoolEnable=true时不为空。
+     * 对于同个MappedFile，要么初始化时有 transientStorePool，就会赋值对应的writeBuffer；要么没有，就依赖mappedByteBuffer进行写入。二选一。
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
      */
     protected ByteBuffer writeBuffer = null;
@@ -259,13 +260,15 @@ public class MappedFile extends ReferenceResource {
         assert messageExt != null;
         assert cb != null;
 
-        // 获取当前位置指针
+        // 获取当前写位置指针
         int currentPos = this.wrotePosition.get();
 
         if (currentPos < this.fileSize) {
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
+            // 从上次的位置开始写入
             byteBuffer.position(currentPos);
             AppendMessageResult result;
+            // 下面将消息按规范序列化后 追加到 给定的 byteBuffer 中，也就是 writeBuffer或者 mappedByteBuffer
             if (messageExt instanceof MessageExtBrokerInner) {
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBrokerInner) messageExt);
             } else if (messageExt instanceof MessageExtBatch) {
@@ -273,7 +276,7 @@ public class MappedFile extends ReferenceResource {
             } else {
                 return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
             }
-            // 调整写的位置
+            // 维护写的位置
             this.wrotePosition.addAndGet(result.getWroteBytes());
             this.storeTimestamp = result.getStoreTimestamp();
             return result;
@@ -356,7 +359,9 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 操作主体是 writeBuffer。如果不存在，会把当前写的偏移返回，作为最新提交的进度。
+     * 操作主体是 writeBuffer。
+     * 如果不存在，实际上是不需要做提交这一步操作的。会把当前写的偏移返回，作为最新提交的进度。
+     * 如果存在，会把writeBuffer内容写入fileChannel
      */
     public int commit(final int commitLeastPages) {
         if (writeBuffer == null) {
@@ -377,6 +382,7 @@ public class MappedFile extends ReferenceResource {
         // All dirty data has been committed to FileChannel.
         if (writeBuffer != null && this.transientStorePool != null && this.fileSize == this.committedPosition.get()) {
             this.transientStorePool.returnBuffer(writeBuffer);
+            // 提交完毕后，会置空
             this.writeBuffer = null;
         }
 
@@ -549,6 +555,9 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
+     * 获取可读的最大偏移量，
+     * 对于 writeBuffer == null 说明可能是已经提交过的，直接拿最新的写入的偏移；如果writeBuffer存在，则拿上一次提交的偏移。
+     *
      * @return The max position which have valid data
      */
     public int getReadPosition() {
