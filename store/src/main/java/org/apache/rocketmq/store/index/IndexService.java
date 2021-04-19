@@ -215,7 +215,7 @@ public class IndexService {
                 case MessageSysFlag.TRANSACTION_PREPARED_TYPE:
                 case MessageSysFlag.TRANSACTION_COMMIT_TYPE:
                     break;
-                case MessageSysFlag.TRANSACTION_ROLLBACK_TYPE:
+                case MessageSysFlag.TRANSACTION_ROLLBACK_TYPE: // 回滚的消息不需要构建索引
                     return;
             }
 
@@ -228,6 +228,7 @@ public class IndexService {
             }
 
             if (keys != null && keys.length() > 0) {
+                // 支持指定多个key，以空格分隔
                 String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);
                 for (int i = 0; i < keyset.length; i++) {
                     String key = keyset[i];

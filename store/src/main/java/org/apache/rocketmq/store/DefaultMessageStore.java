@@ -107,6 +107,9 @@ public class DefaultMessageStore implements MessageStore {
 
     private AtomicLong printTimes = new AtomicLong(0);
 
+    // 分发器，负责提交commitLog后的其他操作
+    //  如内置 CommitLogDispatcherBuildConsumeQueue 构建消费队列
+    // 内置 CommitLogDispatcherBuildIndex 构建索引文件
     private final LinkedList<CommitLogDispatcher> dispatcherList;
 
     private RandomAccessFile lockFile;
@@ -476,6 +479,7 @@ public class DefaultMessageStore implements MessageStore {
 
     /**
      * 存储消息入口
+     * 存储前是不知道具体的 CommitLog和consumeQueue偏移量的
      */
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
@@ -492,6 +496,7 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         long beginTime = this.getSystemClock().now();
+        // 返回结果里已经可以取到 commitLog偏移和ConsumeQueue的偏移
         PutMessageResult result = this.commitLog.putMessage(msg);
         long elapsedTime = this.getSystemClock().now() - beginTime;
         if (elapsedTime > 500) {
@@ -1944,9 +1949,11 @@ public class DefaultMessageStore implements MessageStore {
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
                             DispatchRequest dispatchRequest =
+                                // 从result 中解析消息内容并封装成 dispatchRequest。每次解析一条
                                 DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();
 
+                            // 如果消息解析成功
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);

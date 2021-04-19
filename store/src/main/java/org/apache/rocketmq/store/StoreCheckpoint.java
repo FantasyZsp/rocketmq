@@ -16,24 +16,34 @@
  */
 package org.apache.rocketmq.store;
 
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
-import org.apache.rocketmq.common.UtilAll;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 public class StoreCheckpoint {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private final RandomAccessFile randomAccessFile;
     private final FileChannel fileChannel;
     private final MappedByteBuffer mappedByteBuffer;
+    /**
+     * commitLog文件刷盘时间点
+     */
     private volatile long physicMsgTimestamp = 0;
+    /**
+     * ConsumeQueue文件刷盘时间点
+     */
     private volatile long logicsMsgTimestamp = 0;
+    /**
+     * 索引文件刷盘时间点
+     */
     private volatile long indexMsgTimestamp = 0;
 
     public StoreCheckpoint(final String scpPath) throws IOException {

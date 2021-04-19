@@ -860,6 +860,7 @@ public class CommitLog {
             }
 
             // 将消息追加到内存里，接下来会根据刷盘策略执行对应的逻辑
+            // 追加后可以拿到在commitLog中的偏移量了。
             result = mappedFile.appendMessage(msg, this.appendMessageCallback);
             switch (result.getStatus()) {
                 case PUT_OK:
@@ -1555,9 +1556,10 @@ public class CommitLog {
             keyBuilder.append('-');
             keyBuilder.append(msgInner.getQueueId());
             String key = keyBuilder.toString();
-            // key代表了一个topic下的某个队列。这里是拿到当前的一个偏移量
+            // key代表了一个topic下的某个队列，这里是拿到当前的一个偏移量，实际上在这一步已经确定了要写往 ConsumeQueue的位置。
+            // 而 写入commitLog的位置，是由写完 bytebuffer后的 fileFromOffset + byteBuffer.position() 确定的
             Long queueOffset = CommitLog.this.topicQueueTable.get(key);
-            if (null == queueOffset) {// null代表第一次写，就从0开始
+            if (null == queueOffset) {// null代表第一次写，就从0开始。这个偏移一条消息加一。
                 queueOffset = 0L;
                 CommitLog.this.topicQueueTable.put(key, queueOffset);
             }
@@ -1623,6 +1625,7 @@ public class CommitLog {
             }
 
             // Initialization of storage space
+            // 消息会先写入msgStoreItemMemory中，然后刷到byteBuffer
             this.resetByteBuffer(msgStoreItemMemory, msgLen);
             // 1 TOTALSIZE
             this.msgStoreItemMemory.putInt(msgLen);

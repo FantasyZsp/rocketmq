@@ -50,9 +50,12 @@ public class ConsumeQueue {
 
     private final String storePath;
     private final int mappedFileSize;
+    /**
+     * 每次写入内容都维护一下写到的偏移量。
+     */
     private long maxPhysicOffset = -1;
     /**
-     * TODO 含义？
+     * 文件最开始写的内容对应的位置。一般都是0
      */
     private volatile long minLogicOffset = 0;
     private ConsumeQueueExt consumeQueueExt = null;
@@ -409,6 +412,9 @@ public class ConsumeQueue {
         return this.minLogicOffset / CQ_STORE_UNIT_SIZE;
     }
 
+    /**
+     * 处理分发请求，构建对应的消费队列信息
+     */
     public void putMessagePositionInfoWrapper(DispatchRequest request) {
         final int maxRetries = 30;
         boolean canWrite = this.defaultMessageStore.getRunningFlags().isCQWriteable();
@@ -463,17 +469,22 @@ public class ConsumeQueue {
             return true;
         }
 
+        // 写准备
         this.byteBufferIndex.flip();
         this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);
-        this.byteBufferIndex.putLong(offset);
-        this.byteBufferIndex.putInt(size);
-        this.byteBufferIndex.putLong(tagsCode);
+        this.byteBufferIndex.putLong(offset); // commitLog偏移量
+        this.byteBufferIndex.putInt(size); // 消息大小
+        this.byteBufferIndex.putLong(tagsCode); // tag hashcode
 
+        // 计算得到实际要写入的物理偏移
         final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;
 
+        // 拿到物理偏移对应的一个文件
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile(expectLogicOffset);
         if (mappedFile != null) {
 
+            // 如果是第一次创建，并且cqOffset不是从零开始写的， 就维护一些 初始信息到前面的内容
+            // 一般新文件对应的 cqOffset 就是0，直接走到最后的逻辑追加信息
             if (mappedFile.isFirstCreateInQueue() && cqOffset != 0 && mappedFile.getWrotePosition() == 0) {
                 this.minLogicOffset = expectLogicOffset;
                 this.mappedFileQueue.setFlushedWhere(expectLogicOffset);
@@ -484,14 +495,17 @@ public class ConsumeQueue {
             }
 
             if (cqOffset != 0) {
+                // 当前物理偏移
                 long currentLogicOffset = mappedFile.getWrotePosition() + mappedFile.getFileFromOffset();
 
+                // 已经写过的区域，再写就认为是重复构建
                 if (expectLogicOffset < currentLogicOffset) {
                     log.warn("Build  consume queue repeatedly, expectLogicOffset: {} currentLogicOffset: {} Topic: {} QID: {} Diff: {}",
                         expectLogicOffset, currentLogicOffset, this.topic, this.queueId, expectLogicOffset - currentLogicOffset);
                     return true;
                 }
 
+                // 预期要写入的位置和当前位置应该是一样的，否则可能是乱序导致的。
                 if (expectLogicOffset != currentLogicOffset) {
                     LOG_ERROR.warn(
                         "[BUG]logic queue order maybe wrong, expectLogicOffset: {} currentLogicOffset: {} Topic: {} QID: {} Diff: {}",
@@ -503,7 +517,9 @@ public class ConsumeQueue {
                     );
                 }
             }
+            // 记录下当前文件内已写入的最大的偏移
             this.maxPhysicOffset = offset + size;
+            // 写入
             return mappedFile.appendMessage(this.byteBufferIndex.array());
         }
         return false;
