@@ -16,31 +16,44 @@
  */
 package org.apache.rocketmq.store;
 
-import java.io.File;
-import java.nio.ByteBuffer;
-import java.util.List;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+import java.io.File;
+import java.nio.ByteBuffer;
+import java.util.List;
+
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    /**
+     * 内部存储的每条数据占用20字节：commit offset 8byte + size 4byte + tag hashcode 8byte
+     */
     public static final int CQ_STORE_UNIT_SIZE = 20;
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
 
     private final DefaultMessageStore defaultMessageStore;
 
+    /**
+     * 单个文件大小限制是 30W个item，单个item长度20字节，所以单个文件大小是 600W字节。mappedFileQueue维护了多个这样的文件。
+     */
     private final MappedFileQueue mappedFileQueue;
     private final String topic;
+    /**
+     * 一个ConsumeQueue仅对应一个队列
+     */
     private final int queueId;
     private final ByteBuffer byteBufferIndex;
 
     private final String storePath;
     private final int mappedFileSize;
     private long maxPhysicOffset = -1;
+    /**
+     * TODO 含义？
+     */
     private volatile long minLogicOffset = 0;
     private ConsumeQueueExt consumeQueueExt = null;
 
@@ -152,6 +165,18 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据时间戳进行索引
+     * <p>
+     * 1. 根据修改时间定位到一个 consumeQueue 文件. TODO consumeQueue的修改时间和消息本身在commitLog中的修改时间是一致的吗？异步存储下会不会有 timestamp 不对应的情况。
+     * - 拿到该文件本身的偏移范围。后续所有工作是在当前 consumeQueue 文件中搜索。
+     * <p>
+     * 2. 获取当前文件的buffer，后续根据协议和buffer的指针进行二分查找。
+     * <p>
+     * 3. 根据每次二分拿到的结果，获取物理偏移和消息长度，对比commitLog的最小偏移 或者 根据偏移和长度到commitLog中获取消息后，读取消息的存储时间，判定是否命中。
+     * 这里的low和high是当前的消费队列内的相对偏移被转化为从0开始。
+     * 消费队列本身记录的偏移量是commitLog中的物理偏移。
+     */
     public long getOffsetInQueueByTime(final long timestamp) {
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
         if (mappedFile != null) {
@@ -160,31 +185,39 @@ public class ConsumeQueue {
             int high = 0;
             int midOffset = -1, targetOffset = -1, leftOffset = -1, rightOffset = -1;
             long leftIndexValue = -1L, rightIndexValue = -1L;
+            // commitLog中最小偏移
             long minPhysicOffset = this.defaultMessageStore.getMinPhyOffset();
+            // 获取时间戳对应的mappedFile的buffer，此buffer的内容是从文件开始到最新已提交的数据。都是20的倍数
             SelectMappedBufferResult sbr = mappedFile.selectMappedBuffer(0);
             if (null != sbr) {
                 ByteBuffer byteBuffer = sbr.getByteBuffer();
+                // limit含义是buffer长度，即mappedFile长度。
+                // 因为low从0，所以这里是为后续整除后 索引从0算的对齐
                 high = byteBuffer.limit() - CQ_STORE_UNIT_SIZE;
                 try {
                     while (high >= low) {
                         midOffset = (low + high) / (2 * CQ_STORE_UNIT_SIZE) * CQ_STORE_UNIT_SIZE;
                         byteBuffer.position(midOffset);
+                        // 这里跟bytebuffer写入内容协议有关系。所以能拿到物理偏移。
                         long phyOffset = byteBuffer.getLong();
-                        int size = byteBuffer.getInt();
-                        if (phyOffset < minPhysicOffset) {
+                        int size = byteBuffer.getInt(); // 消息长度
+                        if (phyOffset < minPhysicOffset) { // 偏左，需要收敛左边
                             low = midOffset + CQ_STORE_UNIT_SIZE;
                             leftOffset = midOffset;
                             continue;
                         }
 
+                        /**
+                         * 根据消息的物理偏移和消息长度，读取消息后提取存储时间
+                         */
                         long storeTime =
                             this.defaultMessageStore.getCommitLog().pickupStoreTimestamp(phyOffset, size);
-                        if (storeTime < 0) {
+                        if (storeTime < 0) { //pickupStoreTimestamp:  if an error occurs, it returns -1
                             return 0;
-                        } else if (storeTime == timestamp) {
+                        } else if (storeTime == timestamp) { // 命中
                             targetOffset = midOffset;
                             break;
-                        } else if (storeTime > timestamp) {
+                        } else if (storeTime > timestamp) { // 偏右，收敛右边
                             high = midOffset - CQ_STORE_UNIT_SIZE;
                             rightOffset = midOffset;
                             rightIndexValue = storeTime;
@@ -423,7 +456,7 @@ public class ConsumeQueue {
     }
 
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
-        final long cqOffset) {
+                                           final long cqOffset) {
 
         if (offset + size <= this.maxPhysicOffset) {
             log.warn("Maybe try to build consume queue repeatedly maxPhysicOffset={} phyOffset={}", maxPhysicOffset, offset);
@@ -488,12 +521,17 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 这里体现索引的作用。
+     * 给出一个偏移量，利用近似O(1)复杂度找到对应的buffer，buffer为从startIndex开始可读的内容。
+     */
     public SelectMappedBufferResult getIndexBuffer(final long startIndex) {
         int mappedFileSize = this.mappedFileSize;
+        // 获取物理偏移量
         long offset = startIndex * CQ_STORE_UNIT_SIZE;
         if (offset >= this.getMinLogicOffset()) {
             MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);
-            if (mappedFile != null) {
+            if (mappedFile != null) {// 获取对应的buffer
                 SelectMappedBufferResult result = mappedFile.selectMappedBuffer((int) (offset % mappedFileSize));
                 return result;
             }

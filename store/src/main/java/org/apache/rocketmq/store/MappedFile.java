@@ -61,7 +61,8 @@ public class MappedFile extends ReferenceResource {
      */
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
     /**
-     * 当前写指针，从0开始。每当写入到 writeBuffer 或者 mappedByteBuffer 时会记录、
+     * 当前写指针，相对于当前文件而言，从0开始。
+     * 每当写入到 writeBuffer 或者 mappedByteBuffer 时会记录、
      */
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
     /**
@@ -482,6 +483,10 @@ public class MappedFile extends ReferenceResource {
         return null;
     }
 
+    /**
+     * 获取 pos到readPosition之间的mappedByteBuffer.
+     * pos代表了单个文件内的相对0的偏移量，readPosition代表了当前已提交的最大偏移量。
+     */
     public SelectMappedBufferResult selectMappedBuffer(int pos) {
         int readPosition = getReadPosition();
         if (pos < readPosition && pos >= 0) {
@@ -491,6 +496,7 @@ public class MappedFile extends ReferenceResource {
                 int size = readPosition - pos;
                 ByteBuffer byteBufferNew = byteBuffer.slice();
                 byteBufferNew.limit(size);
+                // startOffset 说明了pos给出的是 文件内相对偏移，返回的是 全局的偏移。
                 return new SelectMappedBufferResult(this.fileFromOffset + pos, byteBufferNew, size, this);
             }
         }
@@ -557,6 +563,7 @@ public class MappedFile extends ReferenceResource {
     /**
      * 获取可读的最大偏移量，
      * 对于 writeBuffer == null 说明可能是已经提交过的，直接拿最新的写入的偏移；如果writeBuffer存在，则拿上一次提交的偏移。
+     * 这里总是要对齐已提交的数据，未提交的不会返回。
      *
      * @return The max position which have valid data
      */

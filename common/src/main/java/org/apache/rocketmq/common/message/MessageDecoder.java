@@ -280,30 +280,30 @@ public class MessageDecoder {
             }
 
             // 1 TOTALSIZE
-            int storeSize = byteBuffer.getInt();
+            int storeSize = byteBuffer.getInt(); // 读4个字节，内部offset + 4 = 4
             msgExt.setStoreSize(storeSize);
 
             // 2 MAGICCODE
-            byteBuffer.getInt();
+            byteBuffer.getInt(); // 读4个字节，内部offset + 4 = 8
 
             // 3 BODYCRC
-            int bodyCRC = byteBuffer.getInt();
+            int bodyCRC = byteBuffer.getInt(); // 读4个字节，内部offset + 4 = 12
             msgExt.setBodyCRC(bodyCRC);
 
             // 4 QUEUEID
-            int queueId = byteBuffer.getInt();
+            int queueId = byteBuffer.getInt(); // 读4个字节，内部offset + 4 = 16
             msgExt.setQueueId(queueId);
 
             // 5 FLAG
-            int flag = byteBuffer.getInt();
+            int flag = byteBuffer.getInt(); // 读4个字节，内部offset + 4 = 20
             msgExt.setFlag(flag);
 
             // 6 QUEUEOFFSET
-            long queueOffset = byteBuffer.getLong();
+            long queueOffset = byteBuffer.getLong(); // 读8个字节，内部offset + 8 = 28
             msgExt.setQueueOffset(queueOffset);
 
             // 7 PHYSICALOFFSET
-            long physicOffset = byteBuffer.getLong();
+            long physicOffset = byteBuffer.getLong(); // 读8个字节，内部offset + 8 =36，读之前offset = 28
             msgExt.setCommitLogOffset(physicOffset);
 
             // 8 SYSFLAG

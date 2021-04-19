@@ -94,6 +94,7 @@ public class MappedFileQueue {
      * O(n)，需要遍历每个文件查看修改时间。
      */
     public MappedFile getMappedFileByTime(final long timestamp) {
+        // TODO 这里为什么调用copy方法？ copy 的内容是什么？
         Object[] mfs = this.copyMappedFiles(0);
 
         if (null == mfs)
@@ -483,6 +484,7 @@ public class MappedFileQueue {
             MappedFile firstMappedFile = this.getFirstMappedFile();
             MappedFile lastMappedFile = this.getLastMappedFile();
             if (firstMappedFile != null && lastMappedFile != null) {
+                // 偏移超出了涵盖范围
                 if (offset < firstMappedFile.getFileFromOffset() || offset >= lastMappedFile.getFileFromOffset() + this.mappedFileSize) {
                     LOG_ERROR.warn("Offset not matched. Request offset: {}, firstOffset: {}, lastOffset: {}, mappedFileSize: {}, mappedFiles count: {}",
                         offset,
@@ -499,11 +501,13 @@ public class MappedFileQueue {
                     } catch (Exception ignored) {
                     }
 
+                    // 命中。一般都会走到这个方法。
                     if (targetFile != null && offset >= targetFile.getFileFromOffset()
                         && offset < targetFile.getFileFromOffset() + this.mappedFileSize) {
                         return targetFile;
                     }
 
+                    // 兜底？
                     for (MappedFile tmpMappedFile : this.mappedFiles) {
                         if (offset >= tmpMappedFile.getFileFromOffset()
                             && offset < tmpMappedFile.getFileFromOffset() + this.mappedFileSize) {
@@ -512,6 +516,8 @@ public class MappedFileQueue {
                     }
                 }
 
+
+                // 查找策略
                 if (returnFirstOnNotFound) {
                     return firstMappedFile;
                 }
