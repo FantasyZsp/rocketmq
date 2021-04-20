@@ -28,6 +28,9 @@ public class GetMessageResult {
 
     private final List<ByteBuffer> messageBufferList = new ArrayList<ByteBuffer>(100);
 
+    /**
+     * 给出各种获取消息的结果状态。broker拿到状态会进一步处理成 客户端的应对建议。
+     */
     private GetMessageStatus status;
     private long nextBeginOffset;
     private long minOffset;

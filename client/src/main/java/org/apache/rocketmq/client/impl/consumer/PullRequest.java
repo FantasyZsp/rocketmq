@@ -22,6 +22,10 @@ public class PullRequest {
     private String consumerGroup;
     private MessageQueue messageQueue;
     private ProcessQueue processQueue;
+    /**
+     * 消息拉取偏移量
+     * TODO 含义 以及 如何得来的？
+     */
     private long nextOffset;
     private boolean lockedFirst = false;
 

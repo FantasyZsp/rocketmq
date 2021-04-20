@@ -227,6 +227,9 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             return response;
         }
 
+        /**
+         * 消息过滤。这里就是服务端过滤机制。由其内部实现可以知道，服务端主要是利用 tag的hashcode进行 模糊过滤，客户端需要根据tag的内容进一步精确过滤。
+         */
         MessageFilter messageFilter;
         if (this.brokerController.getBrokerConfig().isFilterSupportRetry()) {
             messageFilter = new ExpressionForRetryMessageFilter(subscriptionData, consumerFilterData,
@@ -236,6 +239,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                 this.brokerController.getConsumerFilterManager());
         }
 
+        // 组装消息
         final GetMessageResult getMessageResult =
             this.brokerController.getMessageStore().getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                 requestHeader.getQueueId(), requestHeader.getQueueOffset(), requestHeader.getMaxMsgNums(), messageFilter);
@@ -406,7 +410,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                         response = null;
                     }
                     break;
-                case ResponseCode.PULL_NOT_FOUND:
+                case ResponseCode.PULL_NOT_FOUND: // 消息没有找到时，开启长轮询机制挂起请求等待通知。
 
                     if (brokerAllowSuspend && hasSuspendFlag) {
                         long pollingTimeMills = suspendTimeoutMillisLong;
@@ -461,6 +465,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             response.setRemark("store getMessage return null");
         }
 
+        // 如果头部给出了CommitOffset（来源于客户端内存中消费偏移），并且当前是主broker，就更新消费进度。
         boolean storeOffsetEnable = brokerAllowSuspend;
         storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
         storeOffsetEnable = storeOffsetEnable

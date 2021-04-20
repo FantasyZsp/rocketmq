@@ -60,6 +60,9 @@ public class PullAPIWrapper {
      */
     private ConcurrentMap<MessageQueue, AtomicLong/* brokerId */> pullFromWhichNodeTable =
         new ConcurrentHashMap<MessageQueue, AtomicLong>(32);
+    /**
+     * 多用于拉模式，用户控制从哪里拉取
+     */
     private volatile boolean connectBrokerByUser = false;
     private volatile long defaultBrokerId = MixAll.MASTER_ID;
     private Random random = new Random(System.currentTimeMillis());
@@ -78,13 +81,14 @@ public class PullAPIWrapper {
                                         final SubscriptionData subscriptionData) {
         PullResultExt pullResultExt = (PullResultExt) pullResult;
 
-        // 维护拉取mq对应的broker节点。
+        // 维护拉取mq对应的broker节点。 getSuggestWhichBrokerId 是由broker给出的
         this.updatePullFromWhichNode(mq, pullResultExt.getSuggestWhichBrokerId());
         if (PullStatus.FOUND == pullResult.getPullStatus()) {
             ByteBuffer byteBuffer = ByteBuffer.wrap(pullResultExt.getMessageBinary());
             List<MessageExt> msgList = MessageDecoder.decodes(byteBuffer);
 
-            // 处理tag标签过滤。由此可看tag还是全量拉取下来再过滤，因此不适合业务量大的通过tag区分。
+            // 处理tag标签过滤。
+            // 在服务端已经根据tag的hashcode进行了过滤，客户端只需要过滤存在hashcode冲突的情况。 因此还是比较适合处理大数据量的情况。
             // 因为过滤逻辑，可能导致返回空集合
             List<MessageExt> msgListFilterAgain = msgList;
             if (!subscriptionData.getTagsSet().isEmpty() && !subscriptionData.isClassFilterMode()) {
@@ -159,10 +163,10 @@ public class PullAPIWrapper {
         final String expressionType,
         final long subVersion,
         final long offset,
-        final int maxNums,
+        final int maxNums, // 最多拉取的条数。默认32
         final int sysFlag,
-        final long commitOffset,
-        final long brokerSuspendMaxTimeMillis,
+        final long commitOffset, // 当前内存中的消费进度
+        final long brokerSuspendMaxTimeMillis, // 消息拉取过程中允许 Broker 挂起时间，默认15s
         final long timeoutMillis,
         final CommunicationMode communicationMode,
         final PullCallback pullCallback

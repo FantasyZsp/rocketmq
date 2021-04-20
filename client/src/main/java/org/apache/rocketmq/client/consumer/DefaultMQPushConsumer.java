@@ -219,11 +219,13 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     private long pullInterval = 0;
 
     /**
+     * 批量消费消费时条数
      * Batch consumption size
      */
     private int consumeMessageBatchMaxSize = 1;
 
     /**
+     * 一次默认拉取32条消息。和配置的批量  consumeMessageBatchMaxSize 没关系。
      * Batch pull size
      */
     private int pullBatchSize = 32;

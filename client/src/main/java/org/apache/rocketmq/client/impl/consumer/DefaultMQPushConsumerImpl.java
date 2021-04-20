@@ -380,6 +380,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                             break;
                         case NO_NEW_MSG:
                         case NO_MATCHED_MSG:
+                            // 没有匹配到对应的消息，根据broker返回的 下次偏移，再发起一次请求。
                             pullRequest.setNextOffset(pullResult.getNextBeginOffset());
 
                             DefaultMQPushConsumerImpl.this.correctTagsOffset(pullRequest);
@@ -433,6 +434,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         if (MessageModel.CLUSTERING == this.defaultMQPushConsumer.getMessageModel()) {
             commitOffsetValue = this.offsetStore.readOffset(pullRequest.getMessageQueue(), ReadOffsetType.READ_FROM_MEMORY);
             if (commitOffsetValue > 0) {
+                // 内存中读取的消费进度大于0时设为true
                 commitOffsetEnable = true;
             }
         }
@@ -462,6 +464,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 subscriptionData.getExpressionType(),
                 subscriptionData.getSubVersion(),
                 pullRequest.getNextOffset(),
+                // 最多拉取32条
                 this.defaultMQPushConsumer.getPullBatchSize(),
                 sysFlag,
                 commitOffsetValue,
