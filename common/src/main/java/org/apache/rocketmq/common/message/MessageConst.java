@@ -21,6 +21,9 @@ import java.util.HashSet;
 public class MessageConst {
     public static final String PROPERTY_KEYS = "KEYS";
     public static final String PROPERTY_TAGS = "TAGS";
+    /**
+     * 同步刷盘标识。不赋值时默认同步刷盘。对应的值 是字符串的 bool
+     */
     public static final String PROPERTY_WAIT_STORE_MSG_OK = "WAIT";
     public static final String PROPERTY_DELAY_TIME_LEVEL = "DELAY";
     public static final String PROPERTY_RETRY_TOPIC = "RETRY_TOPIC";

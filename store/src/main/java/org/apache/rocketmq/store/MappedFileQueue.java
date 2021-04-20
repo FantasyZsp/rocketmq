@@ -445,6 +445,9 @@ public class MappedFileQueue {
         return deleteCount;
     }
 
+    /**
+     * 根据上次的刷盘点位找到对应的文件，调用刷盘方法，返回offset后，维护 flushedWhere
+     */
     public boolean flush(final int flushLeastPages) {
         boolean result = true;
         MappedFile mappedFile = this.findMappedFileByOffset(this.flushedWhere, this.flushedWhere == 0);

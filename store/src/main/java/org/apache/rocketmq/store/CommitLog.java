@@ -54,9 +54,17 @@ public class CommitLog {
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     // End of file empty MAGIC CODE cbd43194
     protected final static int BLANK_MAGIC_CODE = -875286124;
-    // 可看做commitlog文件夹，内部包括一系列的commitLog文件。mappedFile对应了文件
+    /**
+     * 可看做commitlog文件夹，内部包括一系列的commitLog文件。mappedFile对应了文件
+     */
     protected final MappedFileQueue mappedFileQueue;
     protected final DefaultMessageStore defaultMessageStore;
+    /**
+     * CommitLog刷盘服务
+     * 根据配置的同步策略不同，赋予不同的实现
+     * 同步刷盘时 采用组提交 GroupCommitService ；其他采用 FlushRealTimeService
+     * 本身实现了 ServiceThread，所以具备 唤醒能力和阻塞能力
+     */
     private final FlushCommitLogService flushCommitLogService;
 
     //If TransientStorePool enabled, we must flush message to FileChannel at fixed periods
@@ -76,6 +84,7 @@ public class CommitLog {
             defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog(), defaultMessageStore.getAllocateMappedFileService());
         this.defaultMessageStore = defaultMessageStore;
 
+        // 同步刷盘时 采用组提交
         if (FlushDiskType.SYNC_FLUSH == defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
             this.flushCommitLogService = new GroupCommitService();
         } else {
@@ -966,16 +975,21 @@ public class CommitLog {
     }
 
 
+    /**
+     * 经典的异步转同步设计
+     */
     public void handleDiskFlush(AppendMessageResult result, PutMessageResult putMessageResult, MessageExt messageExt) {
         // Synchronization flush
         if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
             final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
-            if (messageExt.isWaitStoreMsgOK()) {
+            if (messageExt.isWaitStoreMsgOK()) { // 每个消息都会有 持久化标志。这里代表 是否等存储成功，也就是 同步刷盘。
                 GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes());
+                // 提交commit请求，内部会唤醒工作线程进行刷盘。同时如果当前线程调用了内联的future.get方法， 刷盘线程刷盘完毕后，会唤醒阻塞在 future.get 的线程
                 service.putRequest(request);
                 CompletableFuture<PutMessageStatus> flushOkFuture = request.future();
                 PutMessageStatus flushStatus = null;
                 try {
+                    // 阻塞等待结果，默认等5s。内部如果刷盘完毕，会执行唤醒操作，唤醒当前线程
                     flushStatus = flushOkFuture.get(this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout(),
                         TimeUnit.MILLISECONDS);
                 } catch (InterruptedException | ExecutionException | TimeoutException e) {
@@ -987,6 +1001,7 @@ public class CommitLog {
                     putMessageResult.setPutMessageStatus(PutMessageStatus.FLUSH_DISK_TIMEOUT);
                 }
             } else {
+                // 异步刷盘。绕过了提交刷盘请求，唤醒服务后，服务会执行 doCommit方法。而doCommit在没有提交请求时，会直接根据写入点进行刷盘。
                 service.wakeup();
             }
         }
@@ -1125,6 +1140,7 @@ public class CommitLog {
             this.defaultMessageStore.unlockMappedFile(unlockMappedFile);
         }
 
+        // 构造put结果，具体真实的结果会交给 handleDiskFlush 和handleDiskFlush处理。
         PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.PUT_OK, result);
 
         // Statistics
@@ -1424,6 +1440,7 @@ public class CommitLog {
             synchronized (this.requestsWrite) {
                 this.requestsWrite.add(request);
             }
+            // 唤醒 GroupCommitService 服务线程，如果等待
             this.wakeup();
         }
 
@@ -1439,12 +1456,15 @@ public class CommitLog {
                     for (GroupCommitRequest req : this.requestsRead) {
                         // There may be a message in the next file, so a maximum of
                         // two times the flush
+                        // 如果 flushedWhere 大于请求中的偏移，代表已经刷盘过
                         boolean flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                         for (int i = 0; i < 2 && !flushOK; i++) {
+                            // 如果不大于请求中的偏移，刷盘，并维护 flushedWhere
                             CommitLog.this.mappedFileQueue.flush(0);
                             flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                         }
 
+                        // 唤醒阻塞在 GroupCommitRequest future上的线程
                         req.wakeupCustomer(flushOK ? PutMessageStatus.PUT_OK : PutMessageStatus.FLUSH_DISK_TIMEOUT);
                     }
 
@@ -1462,12 +1482,15 @@ public class CommitLog {
             }
         }
 
+        @Override
         public void run() {
             CommitLog.log.info(this.getServiceName() + " service started");
 
             while (!this.isStopped()) {
                 try {
+                    // 等待10ms
                     this.waitForRunning(10);
+                    // 执行提交逻辑
                     this.doCommit();
                 } catch (Exception e) {
                     CommitLog.log.warn(this.getServiceName() + " service has exception. ", e);

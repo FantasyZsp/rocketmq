@@ -83,6 +83,8 @@ public class MappedFile extends ReferenceResource {
      * transientStorePoolEnable=true时不为空。
      * 对于同个MappedFile，要么初始化时有 transientStorePool，就会赋值对应的writeBuffer；要么没有，就依赖mappedByteBuffer进行写入。二选一。
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
+     * <p>
+     * 堆外 直接内存
      */
     protected ByteBuffer writeBuffer = null;
     /**
