@@ -16,28 +16,6 @@
  */
 package org.apache.rocketmq.store;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.net.Inet6Address;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileLock;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.rocketmq.common.BrokerConfig;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.ServiceThread;
@@ -62,6 +40,29 @@ import org.apache.rocketmq.store.index.IndexService;
 import org.apache.rocketmq.store.index.QueryOffsetResult;
 import org.apache.rocketmq.store.schedule.ScheduleMessageService;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.net.Inet6Address;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileLock;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -119,10 +120,10 @@ public class DefaultMessageStore implements MessageStore {
     boolean shutDownNormal = false;
 
     private final ScheduledExecutorService diskCheckScheduledExecutorService =
-            Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("DiskCheckScheduledThread"));
+        Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("DiskCheckScheduledThread"));
 
     public DefaultMessageStore(final MessageStoreConfig messageStoreConfig, final BrokerStatsManager brokerStatsManager,
-        final MessageArrivingListener messageArrivingListener, final BrokerConfig brokerConfig) throws IOException {
+                               final MessageArrivingListener messageArrivingListener, final BrokerConfig brokerConfig) throws IOException {
         this.messageArrivingListener = messageArrivingListener;
         this.brokerConfig = brokerConfig;
         this.messageStoreConfig = messageStoreConfig;
@@ -179,16 +180,20 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
-     * @throws IOException
+     * 在 {@link BrokerController#initialize()} 被调用
      */
+    @Override
     public boolean load() {
         boolean result = true;
 
         try {
+            // abort文件不存在说明正常退出了
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 
+            // final且构造函数唯一，没必要判断吧？
             if (null != scheduleMessageService) {
+                // TODO 加载延时队列
                 result = result && this.scheduleMessageService.load();
             }
 
@@ -198,14 +203,13 @@ public class DefaultMessageStore implements MessageStore {
             // load Consume Queue
             result = result && this.loadConsumeQueue();
 
+            // 如果以上都加载顺利。
             if (result) {
+                // 加载存储检测点，
                 this.storeCheckpoint =
                     new StoreCheckpoint(StorePathConfigHelper.getStoreCheckpoint(this.messageStoreConfig.getStorePathRootDir()));
-
                 this.indexService.load(lastExitOK);
-
                 this.recover(lastExitOK);
-
                 log.info("load over, and the max phy offset = {}", this.getMaxPhyOffset());
             }
         } catch (Exception e) {
@@ -563,8 +567,8 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     public GetMessageResult getMessage(final String group, final String topic, final int queueId, final long offset,
-        final int maxMsgNums,
-        final MessageFilter messageFilter) {
+                                       final int maxMsgNums,
+                                       final MessageFilter messageFilter) {
         if (this.shutdown) {
             log.warn("message store has shutdown, so getMessage is forbidden");
             return null;
@@ -818,7 +822,7 @@ public class DefaultMessageStore implements MessageStore {
     private String getStorePathPhysic() {
         String storePathPhysic = "";
         if (DefaultMessageStore.this.getMessageStoreConfig().isEnableDLegerCommitLog()) {
-            storePathPhysic = ((DLedgerCommitLog)DefaultMessageStore.this.getCommitLog()).getdLedgerServer().getdLedgerConfig().getDataStorePath();
+            storePathPhysic = ((DLedgerCommitLog) DefaultMessageStore.this.getCommitLog()).getdLedgerServer().getdLedgerConfig().getDataStorePath();
         } else {
             storePathPhysic = DefaultMessageStore.this.getMessageStoreConfig().getStorePathCommitLog();
         }
@@ -1109,7 +1113,7 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     public Map<String, Long> getMessageIds(final String topic, final int queueId, long minOffset, long maxOffset,
-        SocketAddress storeHost) {
+                                           SocketAddress storeHost) {
         Map<String, Long> messageIds = new HashMap<String, Long>();
         if (this.shutdown) {
             return messageIds;
@@ -1379,6 +1383,10 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 查看 abort 临时文件存不存在
+     * abort用于判定是否是异常停机。在正常
+     */
     private boolean isTempFileExist() {
         String fileName = StorePathConfigHelper.getAbortFile(this.messageStoreConfig.getStorePathRootDir());
         File file = new File(fileName);
@@ -1406,9 +1414,12 @@ public class DefaultMessageStore implements MessageStore {
                             topic,
                             queueId,
                             StorePathConfigHelper.getStorePathConsumeQueue(this.messageStoreConfig.getStorePathRootDir()),
+                            // 默认是600W = 30W * 20
                             this.getMessageStoreConfig().getMappedFileSizeConsumeQueue(),
                             this);
+                        // 维护到 consumeQueueTable
                         this.putConsumeQueue(topic, queueId, logic);
+                        // 依次调用 ConsumeQueue的load方法进行文件加载，内部也会把所有指针指向文件大小的位置，也就是文件末尾
                         if (!logic.load()) {
                             return false;
                         }
@@ -1455,10 +1466,15 @@ public class DefaultMessageStore implements MessageStore {
 
     private long recoverConsumeQueue() {
         long maxPhysicOffset = -1;
+        // recover 所有的 ConsumeQueue 文件
         for (ConcurrentMap<Integer, ConsumeQueue> maps : this.consumeQueueTable.values()) {
             for (ConsumeQueue logic : maps.values()) {
+                // 以此检测文件内数据项的有效性，直到碰到第一个无效的，就此记录最大物理偏移，并以其作为当前的构建进度。
                 logic.recover();
                 if (logic.getMaxPhysicOffset() > maxPhysicOffset) {
+                    // 这里为什么记录最大的物理偏移？并且对比的是不同队列间的，会有什么含义
+                    // maxPhysicOffset是每个 消费队列给出的最大偏移。消费对应中 最大偏移和commitLog是对应的。
+                    // 拿到了所有里最大的maxPhysicOffset，也就代表了 对应到commitLog中的进度。后续根据commitLog的恢复情况会对 消费队列进行校正。
                     maxPhysicOffset = logic.getMaxPhysicOffset();
                 }
             }
@@ -1469,15 +1485,18 @@ public class DefaultMessageStore implements MessageStore {
 
     public void recoverTopicQueueTable() {
         HashMap<String/* topic-queueid */, Long/* offset */> table = new HashMap<String, Long>(1024);
+        // 拿到commitLog开始的偏移量。可能因为文件废弃导致最开始的文件销毁。
         long minPhyOffset = this.commitLog.getMinOffset();
         for (ConcurrentMap<Integer, ConsumeQueue> maps : this.consumeQueueTable.values()) {
             for (ConsumeQueue logic : maps.values()) {
                 String key = logic.getTopic() + "-" + logic.getQueueId();
                 table.put(key, logic.getMaxOffsetInQueue());
+                // 矫正每个文件最小偏移 TODO 含义
                 logic.correctMinOffset(minPhyOffset);
             }
         }
 
+        // 维护 TopicQueueTable ，table中维护了每个消费队列中 偏移进度。是实现消息在如消费队列前就能拿到偏移的关键。
         this.commitLog.setTopicQueueTable(table);
     }
 
@@ -1755,6 +1774,7 @@ public class DefaultMessageStore implements MessageStore {
         public void setManualDeleteFileSeveralTimes(int manualDeleteFileSeveralTimes) {
             this.manualDeleteFileSeveralTimes = manualDeleteFileSeveralTimes;
         }
+
         public boolean isSpaceFull() {
             String storePathPhysic = DefaultMessageStore.this.getMessageStoreConfig().getStorePathCommitLog();
             double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathPhysic);

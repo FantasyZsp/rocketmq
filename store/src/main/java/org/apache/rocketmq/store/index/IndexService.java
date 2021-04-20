@@ -65,7 +65,10 @@ public class IndexService {
                     IndexFile f = new IndexFile(file.getPath(), this.hashSlotNum, this.indexNum, 0, 0);
                     f.load();
 
+                    // 注意，这里给出了异常退出时要做的部分事情
                     if (!lastExitOK) {
+
+                        // 如果当前索引文件的刷盘时间 大于 检查点的刷盘时间，直接删掉文件
                         if (f.getEndTimestamp() > this.defaultMessageStore.getStoreCheckpoint()
                             .getIndexMsgTimestamp()) {
                             f.destroy(0);

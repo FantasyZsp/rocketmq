@@ -169,9 +169,11 @@ public class MappedFileQueue {
         File[] files = dir.listFiles();
         if (files != null) {
             // ascending order
+            // 这里保证了文件名有序。文件名对应了偏移量
             Arrays.sort(files);
             for (File file : files) {
 
+                // 规范需要匹配： 大小
                 if (file.length() != this.mappedFileSize) {
                     log.warn(file + "\t" + file.length()
                         + " length not matched message store config value, please check it manually");
@@ -181,6 +183,7 @@ public class MappedFileQueue {
                 try {
                     MappedFile mappedFile = new MappedFile(file.getPath(), mappedFileSize);
 
+                    // 刚加载时，设置 指针 为文件大小 TODO 作用？
                     mappedFile.setWrotePosition(this.mappedFileSize);
                     mappedFile.setFlushedPosition(this.mappedFileSize);
                     mappedFile.setCommittedPosition(this.mappedFileSize);

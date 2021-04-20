@@ -178,11 +178,13 @@ public class CommitLog {
             MappedFile mappedFile = mappedFiles.get(index);
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
             long processOffset = mappedFile.getFileFromOffset();
-            long mappedFileOffset = 0;
+            long mappedFileOffset = 0; // 代表了矫正的字节数，加上 processOffset，就对应了矫正到的物理偏移。
             while (true) {
+                // 一次解析各个commitLog文件的消息，一次解析一条
                 DispatchRequest dispatchRequest = this.checkMessageAndReturnSize(byteBuffer, checkCRCOnRecover);
                 int size = dispatchRequest.getMsgSize();
                 // Normal data
+                // 如果解析成功，累加 mappedFileOffset，最终会记上文件开始的偏移，算出最终的物理偏移位置。
                 if (dispatchRequest.isSuccess() && size > 0) {
                     mappedFileOffset += size;
                 }
@@ -210,14 +212,17 @@ public class CommitLog {
                 }
             }
 
+            // 记录处理进度。后续所有衍生的文件都以此进度为准，矫正数据。
             processOffset += mappedFileOffset;
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
+            // 删除大于 processOffset点位的所有文件，如果有文件刚好包含 processOffset，就以processOffset点位为准，重置读写刷盘指针。
             this.mappedFileQueue.truncateDirtyFiles(processOffset);
 
             // Clear ConsumeQueue redundant data
             if (maxPhyOffsetOfConsumeQueue >= processOffset) {
                 log.warn("maxPhyOffsetOfConsumeQueue({}) >= processOffset({}), truncate dirty logic files", maxPhyOffsetOfConsumeQueue, processOffset);
+                // 处理超出 commitLog偏移的消费队列的数据。
                 this.defaultMessageStore.truncateDirtyLogicFiles(processOffset);
             }
         } else {

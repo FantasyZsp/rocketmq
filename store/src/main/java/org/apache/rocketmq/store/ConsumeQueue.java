@@ -38,7 +38,8 @@ public class ConsumeQueue {
     private final DefaultMessageStore defaultMessageStore;
 
     /**
-     * 单个文件大小限制是 30W个item，单个item长度20字节，所以单个文件大小是 600W字节。mappedFileQueue维护了多个这样的文件。
+     * 单个文件大小限制是 30W个item，单个item长度20字节，所以单个文件大小是 600W字节。
+     * mappedFileQueue维护了多个这样的文件。
      */
     private final MappedFileQueue mappedFileQueue;
     private final String topic;
@@ -46,16 +47,25 @@ public class ConsumeQueue {
      * 一个ConsumeQueue仅对应一个队列
      */
     private final int queueId;
+    /**
+     * 每次消息追加到 fileChannel前都会先写入这里。
+     */
     private final ByteBuffer byteBufferIndex;
 
     private final String storePath;
+    /**
+     * 单个 ConsumeQueue 文件总大小
+     * 默认单个文件大小限制是 30W个item，单个item长度20字节，所以单个文件大小是 600W字节。
+     */
     private final int mappedFileSize;
     /**
-     * 每次写入内容都维护一下写到的偏移量。
+     * 每次写入内容都维护一下写到的偏移量。这个属性对应的是当前topic下某队列id的所有文件。
+     * 实际数值和 commitLog中的数值是对应的。每次写入内容，都给出了在commitLog中的偏移和消息大小。如果当前是正在写入的文件，那么maxPhysicOffset就代表了此主题队列下，在commitLog中的最大的偏移进度。
      */
     private long maxPhysicOffset = -1;
     /**
-     * 文件最开始写的内容对应的位置。一般都是0
+     * 文件最开始写的内容对应到commitLog的位置。
+     * commitLog一直在顺序写。当创建新的TOPIC时，会构建响应的 ConsumeQueue，那么第一条消息进来时，会记录对应到commitLog里的偏移。
      */
     private volatile long minLogicOffset = 0;
     private ConsumeQueueExt consumeQueueExt = null;
@@ -112,49 +122,57 @@ public class ConsumeQueue {
             int mappedFileSizeLogics = this.mappedFileSize;
             MappedFile mappedFile = mappedFiles.get(index);
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
+            // 从最初的位置开始 一个一个项的检测恢复
             long processOffset = mappedFile.getFileFromOffset();
             long mappedFileOffset = 0;
             long maxExtAddr = 1;
             while (true) {
+                // 每次检测一个文件（一个队列对应了一个ConsumeQueue，但是文件大小有限制，可能会分出多个），每个循环内检测一个unit的有效性。
                 for (int i = 0; i < mappedFileSizeLogics; i += CQ_STORE_UNIT_SIZE) {
                     long offset = byteBuffer.getLong();
                     int size = byteBuffer.getInt();
                     long tagsCode = byteBuffer.getLong();
 
+                    // 检测数据有效性
                     if (offset >= 0 && size > 0) {
                         mappedFileOffset = i + CQ_STORE_UNIT_SIZE;
+                        // 维护最大的物理偏移，其实也是当前有效写入的偏移量。这个属性对应的是当前topic下某队列的所有文件。
                         this.maxPhysicOffset = offset + size;
                         if (isExtAddr(tagsCode)) {
                             maxExtAddr = tagsCode;
                         }
                     } else {
+                        // 无效就停止当前文件的恢复
                         log.info("recover current consume queue file over,  " + mappedFile.getFileName() + " "
                             + offset + " " + size + " " + tagsCode);
                         break;
                     }
                 }
-
+                // 上面检测完了单个文件，并拿到了最大有效的偏移 mappedFileOffset
+                // 这里如果 和 文件大小一样大，说明全部都恢复完毕，且当前文件写满了
                 if (mappedFileOffset == mappedFileSizeLogics) {
-                    index++;
-                    if (index >= mappedFiles.size()) {
+                    index++; // 开始检测下个文件
+                    if (index >= mappedFiles.size()) { // 范围限定
 
                         log.info("recover last consume queue file over, last mapped file "
                             + mappedFile.getFileName());
                         break;
                     } else {
+                        // 开始检测下个文件
                         mappedFile = mappedFiles.get(index);
                         byteBuffer = mappedFile.sliceByteBuffer();
                         processOffset = mappedFile.getFileFromOffset();
                         mappedFileOffset = 0;
                         log.info("recover next consume queue file, " + mappedFile.getFileName());
                     }
-                } else {
+                } else { // 如果恢复到某个文件没有完全恢复，直接停止后续所有的恢复
                     log.info("recover current consume queue queue over " + mappedFile.getFileName() + " "
                         + (processOffset + mappedFileOffset));
                     break;
                 }
             }
 
+            // 计算恢复后物理偏移的位置，后续恢复点以此为准
             processOffset += mappedFileOffset;
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
@@ -461,6 +479,11 @@ public class ConsumeQueue {
         this.defaultMessageStore.getRunningFlags().makeLogicsQueueError();
     }
 
+    /**
+     * @param offset   commitLog中的偏移量
+     * @param size     本条消息大小
+     * @param cqOffset 消费队列下标，类似数组下标，需要根据 unitSize转换物理偏移
+     */
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
                                            final long cqOffset) {
 
