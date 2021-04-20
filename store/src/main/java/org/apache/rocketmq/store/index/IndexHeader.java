@@ -21,20 +21,38 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class IndexHeader {
-    public static final int INDEX_HEADER_SIZE = 40;
-    private static int beginTimestampIndex = 0;
-    private static int endTimestampIndex = 8;
-    private static int beginPhyoffsetIndex = 16;
-    private static int endPhyoffsetIndex = 24;
-    private static int hashSlotcountIndex = 32;
-    private static int indexCountIndex = 36;
-    private final ByteBuffer byteBuffer;
+    public static final int INDEX_HEADER_SIZE = 40; // 头部一共40字节
+    private static int beginTimestampIndex = 0; // 8个字节 开始时间
+    private static int endTimestampIndex = 8; // 8个字节 结束时间
+    private static int beginPhyoffsetIndex = 16; // 8个字节 最小偏移
+    private static int endPhyoffsetIndex = 24; // 8个字节最大偏移
+    private static int hashSlotcountIndex = 32; // 4 个字节总数
+    private static int indexCountIndex = 36;// 4个字节实际索引数
+    private final ByteBuffer byteBuffer; // 内容存储
+    /**
+     * 索引文件对应的最小消息存储时间
+     */
     private AtomicLong beginTimestamp = new AtomicLong(0);
+    /**
+     * 索引文件对应的最大消息存储时间
+     */
     private AtomicLong endTimestamp = new AtomicLong(0);
+    /**
+     * 最小物理偏移量
+     */
     private AtomicLong beginPhyOffset = new AtomicLong(0);
+    /**
+     * 最大物理偏移量
+     */
     private AtomicLong endPhyOffset = new AtomicLong(0);
+    /**
+     * hash槽数量，这个值代表的是能力
+     */
     private AtomicInteger hashSlotCount = new AtomicInteger(0);
 
+    /**
+     * 索引个数。从1开始和具体的使用方式有关。先赋值，后增加
+     */
     private AtomicInteger indexCount = new AtomicInteger(1);
 
     public IndexHeader(final ByteBuffer byteBuffer) {
