@@ -260,13 +260,14 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         if (consumeRequest.getMsgs().isEmpty())
             return;
 
+        // 处理要ackIndex，要么全部成功，要么全部失败。所以，内部消费时，一般成功一般失败可能也会导致重复消费。需要注意幂等处理和事务批次的控制。
         switch (status) {
             case CONSUME_SUCCESS: // 全部消费成功
                 if (ackIndex >= consumeRequest.getMsgs().size()) {
-                    ackIndex = consumeRequest.getMsgs().size() - 1;// ackIndex代表了最大的索引
+                    ackIndex = consumeRequest.getMsgs().size() - 1;// ackIndex 代表了最大的索引
                 }
-                int ok = ackIndex + 1;// ok的个数
-                int failed = consumeRequest.getMsgs().size() - ok;// failed的个数。一般都是0。 TODO 为什么还要多此一举？
+                int ok = ackIndex + 1;// 消费成功的个数
+                int failed = consumeRequest.getMsgs().size() - ok;// failed的个数。一般都是0。
                 this.getConsumerStatsManager().incConsumeOKTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), ok);
                 this.getConsumerStatsManager().incConsumeFailedTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), failed);
                 break;
@@ -279,6 +280,8 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 break;
         }
 
+        // 失败消息处理。
+        // ackIndex应对了成功和失败的收集逻辑。失败从0，成功直接从最大索引+1，就不满足循环条件了
         switch (this.defaultMQPushConsumer.getMessageModel()) {
             case BROADCASTING:// 广播直接无视，log一下意思意思
                 for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
@@ -287,7 +290,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 }
                 break;
             case CLUSTERING:
-                // ackIndex应对了成功和失败的收集逻辑。失败从0，成功直接从最大索引+1，就不满足循环条件了
+                // 收集发回失败的消息，稍后继续消费。能够这么处理的理由：1.可以无序；2.稍后还是要发回到这里来消费。
                 List<MessageExt> msgBackFailed = new ArrayList<MessageExt>(consumeRequest.getMsgs().size());
                 for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
                     MessageExt msg = consumeRequest.getMsgs().get(i);
@@ -295,7 +298,6 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                     boolean result = this.sendMessageBack(msg, context);
                     if (!result) {
                         msg.setReconsumeTimes(msg.getReconsumeTimes() + 1);
-                        // 对于失败的，还特地维护到msgBackFailed以便后续重试
                         msgBackFailed.add(msg);
                     }
                 }
@@ -310,10 +312,11 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 break;
         }
 
-        // 提交处理成功的偏移量。
+        // 从processQueue中移除这批下次。并返回一个偏移。
         // 这里返回consumeRequest.getMsgs()中最小的偏移量，即使稍大的偏移量可能消费成功。
         long offset = consumeRequest.getProcessQueue().removeMessage(consumeRequest.getMsgs());
         if (offset >= 0 && !consumeRequest.getProcessQueue().isDropped()) {
+            // 提交处理成功的偏移量。
             this.defaultMQPushConsumerImpl.getOffsetStore().updateOffset(consumeRequest.getMessageQueue(), offset, true);
         }
     }
@@ -464,6 +467,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             ConsumeMessageConcurrentlyService.this.getConsumerStatsManager()
                 .incConsumeRT(ConsumeMessageConcurrentlyService.this.consumerGroup, messageQueue.getTopic(), consumeRT);
 
+            // 以上，消费完后，如果这里发现 队列被分走了，那么消费结果是不会被处理的。这里也会导致重复消费。
             if (!processQueue.isDropped()) {
                 ConsumeMessageConcurrentlyService.this.processConsumeResult(status, context, this);
             } else {

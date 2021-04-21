@@ -554,6 +554,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
 
             Message newMsg = new Message(MixAll.getRetryTopic(this.defaultMQPushConsumer.getConsumerGroup()), msg.getBody());
 
+            // 一旦消息被发回重新消费，原有的id会被存储在 PROPERTY_ORIGIN_MESSAGE_ID 属性里，后续流程会采用新的消息id。
             String originMsgId = MessageAccessor.getOriginMessageId(msg);
             MessageAccessor.setOriginMessageId(newMsg, UtilAll.isBlank(originMsgId) ? msg.getMsgId() : originMsgId);
 
@@ -1211,9 +1212,19 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         return queueTimeSpan;
     }
 
+    /**
+     * 处理被延时调度或重试调度的消息主题。
+     * 消息重试机制在将消息发回broker存入commitLog时，会将消息本身的topic写入PROPERTY_RETRY_TOPIC属性，改变msg本身的topic为 组对应的retryTopic，如果重试次数超出了，会被调整成死信队列。
+     *
+     * @see org.apache.rocketmq.broker.processor.SendMessageProcessor#asyncConsumerSendMsgBack(io.netty.channel.ChannelHandlerContext, org.apache.rocketmq.remoting.protocol.RemotingCommand)
+     * @see DefaultMQPushConsumerImpl#sendMessageBack(org.apache.rocketmq.common.message.MessageExt, int, java.lang.String) 消费端发回重试队列
+     * <p>
+     */
     public void resetRetryAndNamespace(final List<MessageExt> msgs, String consumerGroup) {
+        // 根据消费组名，拿到对应的消费组重试 topic
         final String groupTopic = MixAll.getRetryTopic(consumerGroup);
         for (MessageExt msg : msgs) {
+            // 拿回真实的topic
             String retryTopic = msg.getProperty(MessageConst.PROPERTY_RETRY_TOPIC);
             if (retryTopic != null && groupTopic.equals(msg.getTopic())) {
                 msg.setTopic(retryTopic);

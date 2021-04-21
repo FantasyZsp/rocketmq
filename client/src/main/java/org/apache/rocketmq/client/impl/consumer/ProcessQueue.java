@@ -256,11 +256,15 @@ public class ProcessQueue {
             this.lastConsumeTimestamp = now;
             try {
                 if (!msgTreeMap.isEmpty()) {
-                    // 如果msgTreeMap删完了，返回queueOffsetMax + 1
+                    // 记录result为msgTreeMap中 queueOffsetMax + 1
+                    // 即，预期会删完 msgTreeMap 的消息，那么返回的偏移就是最大进度 + 1.
+                    // 如果没有删完，代码后面会纠正为最小的key。
                     result = this.queueOffsetMax + 1;
                     int removedCnt = 0;
                     for (MessageExt msg : msgs) {
                         MessageExt prev = msgTreeMap.remove(msg.getQueueOffset());
+                        // 这里有可能删除不成功。比如消费失败且发回broker失败的会再提交进来进行消费，这种情况 pq里是没有这批消息的。
+                        // 但即使处理失败了，消费进度还是会往下进行。因为返回的 msgTreeMap.firstKey()的偏移，还是要大于这批消息的。
                         if (prev != null) {
                             // 删除成功后，维护当前结构中存储的消息数量和大小
                             removedCnt--;
