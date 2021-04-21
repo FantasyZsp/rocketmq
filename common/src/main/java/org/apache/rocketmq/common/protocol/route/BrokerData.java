@@ -44,6 +44,7 @@ public class BrokerData implements Comparable<BrokerData> {
      * Selects a (preferably master) broker address from the registered list.
      * If the master's address cannot be found, a slave broker address is selected in a random manner.
      *
+     * 优先选一个主节点，如果没有，就在从节点里随机选一个。
      * @return Broker address.
      */
     public String selectBrokerAddr() {

@@ -91,9 +91,12 @@ public class MQClientInstance {
     private final int instanceIndex;
     private final String clientId;
     private final long bootTimestamp = System.currentTimeMillis();
+    /**
+     * 维护生产组和内部生产者的映射关系
+     */
     private final ConcurrentMap<String/* group */, MQProducerInner> producerTable = new ConcurrentHashMap<String, MQProducerInner>();
     /**
-     * 维护消费组到消费者的映射关系。
+     * 维护消费组到内部消费者的映射关系。
      * 写：通过MQClientInstance#registerConsumer方法。
      */
     private final ConcurrentMap<String/* group */, MQConsumerInner> consumerTable = new ConcurrentHashMap<String, MQConsumerInner>();
@@ -102,10 +105,11 @@ public class MQClientInstance {
     private final MQClientAPIImpl mQClientAPIImpl;
     private final MQAdminImpl mQAdminImpl;
     /**
-     * 维护了当前客户端订阅的topic，以及topic关联的路由元信息
+     * 维护了当前客户端订阅的topic，以及topic关联的路由元信息。
      * 更新点：启动后{@link DefaultMQPushConsumerImpl#updateTopicSubscribeInfoWhenSubscriptionChanged()}\
      * -> {@link MQClientInstance#updateTopicRouteInfoFromNameServer(java.lang.String)}
      * -> {@link MQClientInstance#updateTopicRouteInfoFromNameServer(java.lang.String, boolean, org.apache.rocketmq.client.producer.DefaultMQProducer)}
+     * 同个topic下的队列信息可能分布在不同的broker上。每个broker也分布在不同集群，且角色有主从。
      */
     private final ConcurrentMap<String/* Topic */, TopicRouteData> topicRouteTable = new ConcurrentHashMap<String, TopicRouteData>();
     private final Lock lockNamesrv = new ReentrantLock();
@@ -1119,6 +1123,9 @@ public class MQClientInstance {
         return 0;
     }
 
+    /**
+     * 根据topic和消费组，从broker上获取所有的消费者id
+     */
     public List<String> findConsumerIdList(final String topic, final String group) {
         // 根据topic找broker地址，找不到就更新下继续找
         String brokerAddr = this.findBrokerAddrByTopic(topic);

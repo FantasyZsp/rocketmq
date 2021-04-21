@@ -16,19 +16,25 @@
  */
 package org.apache.rocketmq.client.impl;
 
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.rocketmq.client.ClientConfig;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.remoting.RPCHook;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
 public class MQClientManager {
     private final static InternalLogger log = ClientLogger.getLog();
     private static MQClientManager instance = new MQClientManager();
     private AtomicInteger factoryIndexGenerator = new AtomicInteger();
+    /**
+     * 为每个客户端id维护一个 MQClientInstance。
+     * 用户定义 DefaultMQProducer或 DefaultMQPushConsumer时，如果没有指定unitName和instantName，可能不同的实例会被判断有相同clientId，此时，就只会对应到一个 MQClientInstance
+     * MQClientInstance十分强大，内部提供了很多 api与namesvr、 broker交互，也提供了很多调度任务。
+     */
     private ConcurrentMap<String/* clientId */, MQClientInstance> factoryTable =
         new ConcurrentHashMap<String, MQClientInstance>();
 

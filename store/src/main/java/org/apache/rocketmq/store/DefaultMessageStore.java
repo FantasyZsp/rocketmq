@@ -1981,10 +1981,13 @@ public class DefaultMessageStore implements MessageStore {
                             // 如果消息解析成功
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
+                                    // 分发给 CommitLogDispatcher 构建 消费队列和索引
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
 
+                                    // 如果开启了长轮询，且当前是 主broker
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
                                         && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
+                                        // 通知 pullRequestHoldService 处理到达的消息，立即分发给拉取消息的客户端，实现准实时的消息拉取。
                                         DefaultMessageStore.this.messageArrivingListener.arriving(dispatchRequest.getTopic(),
                                             dispatchRequest.getQueueId(), dispatchRequest.getConsumeQueueOffset() + 1,
                                             dispatchRequest.getTagsCode(), dispatchRequest.getStoreTimestamp(),

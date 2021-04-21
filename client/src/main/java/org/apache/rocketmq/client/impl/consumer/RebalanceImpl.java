@@ -47,8 +47,9 @@ public abstract class RebalanceImpl {
      * 初始化点，启动时调用this.mQClientFactory.rebalanceImmediately() -> 唤醒 RebalanceService-> run -> doRebalance->rebalanceByTopic -> updateProcessQueueTableInRebalance
      */
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
-    // 维护当前消费者订阅的topic下所有的队列
+
     /**
+     * 维护当前消费者订阅的topic下所有的队列
      * 启动更新点：{@link DefaultMQPushConsumerImpl#updateTopicSubscribeInfoWhenSubscriptionChanged()} -> {@link MQClientInstance#updateTopicRouteInfoFromNameServer(java.lang.String)}
      * -> {@link MQConsumerInner#updateTopicSubscribeInfo(java.lang.String, java.util.Set)}
      */
@@ -97,8 +98,9 @@ public abstract class RebalanceImpl {
             final String brokerName = entry.getKey();
             final Set<MessageQueue> mqs = entry.getValue();
 
-            if (mqs.isEmpty())
+            if (mqs.isEmpty()) {
                 continue;
+            }
 
             FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(brokerName, MixAll.MASTER_ID, true);
             if (findBrokerResult != null) {
@@ -186,8 +188,9 @@ public abstract class RebalanceImpl {
             final String brokerName = entry.getKey();
             final Set<MessageQueue> mqs = entry.getValue();
 
-            if (mqs.isEmpty())
+            if (mqs.isEmpty()) {
                 continue;
+            }
 
             // 获取主 broker
             FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(brokerName, MixAll.MASTER_ID, true);
@@ -276,7 +279,7 @@ public abstract class RebalanceImpl {
                 // topicSubscribeInfoTable的信息在消费者启动时进行了设置，代码入口 DefaultMQPushConsumerImpl.updateTopicSubscribeInfoWhenSubscriptionChanged
                 // 代表了当前的topic下所有的MessageQueue。后面的逻辑需要根据broker中的消费者列表进行重新分配
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
-                // 获取当前topic 消费组consumerGroup下所有的消费者id
+                // 向broker发送请求，获取当前topic 消费组consumerGroup下所有的消费者id
                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
                 if (null == mqSet) {
                     if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
@@ -353,6 +356,7 @@ public abstract class RebalanceImpl {
     }
 
     /**
+     * 对比 rebalance后所有要负责的队列 mqSet 和当前正在负责处理的 processQueueTable，
      * 更新需要处理的mq队列，然后封装请求并分发
      *
      * @param mqSet 新拿到的负载结果
@@ -363,6 +367,8 @@ public abstract class RebalanceImpl {
 
         // 获取当前客户端处理的队列。启动时，这里是没有值的，后续会填充。
         Iterator<Entry<MessageQueue, ProcessQueue>> it = this.processQueueTable.entrySet().iterator();
+
+        // 循环维护当前 processQueueTable，该标记的标记，该删的删。
         while (it.hasNext()) {
             Entry<MessageQueue, ProcessQueue> next = it.next();
             MessageQueue mq = next.getKey();
@@ -371,10 +377,12 @@ public abstract class RebalanceImpl {
             if (mq.getTopic().equals(topic)) {
                 // 如果新分配后，不包含这个MessageQueue了，就标记对应的ProcessQueue 为drop
                 if (!mqSet.contains(mq)) {
-                    pq.setDropped(true);
-                    // 当真的删掉了，才标记变化了
+                    pq.setDropped(true); // 这一步已经标记 挑个pq不会被 消费和处理任何相关的操作了。
+
+                    // 维护mq对应的消费进度，去除锁，操作完后就可以在本地缓存中删去了并标记 changed，表示 ProcessQueueTable有变动。外部会进行广播
                     if (this.removeUnnecessaryMessageQueue(mq, pq)) {
                         it.remove();
+                        // 当真的删掉了，才标记变化了
                         changed = true;
                         log.info("doRebalance, {}, remove unnecessary mq, {}", consumerGroup, mq);
                     }
@@ -399,20 +407,23 @@ public abstract class RebalanceImpl {
         }
 
         List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
+        // 开始维护处理新分配的 mqSet，该加入 processQueueTable的加入，并构建拉取请求开启拉取永动机。
         for (MessageQueue mq : mqSet) {
             // 新分配的mq，创建ProcessQueue进行关联。
             // 应用第一次启动时到这里还是没有值的，因此构建了第一批 负责的所有mq拉取请求。
             if (!this.processQueueTable.containsKey(mq)) {
-                // 到broker上锁定此mq
+                // 对于顺序的队列，总是需要上锁才能操作。
+                // 到broker上锁定此mq，拿不到锁就跳过处理。
                 if (isOrder && !this.lock(mq)) {
                     log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
                     continue;
                 }
 
-                // 删除被删除mq的偏移
+                // 在内存中删除新分配进来的mq的消费偏移 TODO 后面总是会去broker获取消费位移的，这里为什么要删？并且同个消费组，不会有多个消费者存在于同个JVM
                 this.removeDirtyOffset(mq);
                 ProcessQueue pq = new ProcessQueue();
-                long nextOffset = this.computePullFromWhere(mq); // 获取消费点位。优先从broker获取上次读取的偏移，如果没有，就按照语义获取。重试队列有特殊逻辑。
+                // 从broker获取偏移作为 拉取请求需要的进度。
+                long nextOffset = this.computePullFromWhere(mq); // 获取消费点位。优先从broker获取上次读取的偏移，如果没有，就按照语义获取。重试队列有特殊逻辑，总是取 mq 的最大偏移。
                 if (nextOffset >= 0) {
                     ProcessQueue pre = this.processQueueTable.putIfAbsent(mq, pq); // 维护 processQueueTable
                     if (pre != null) {
@@ -425,6 +436,7 @@ public abstract class RebalanceImpl {
                         pullRequest.setMessageQueue(mq);
                         pullRequest.setProcessQueue(pq);
                         pullRequestList.add(pullRequest); // 对于新分配的mq，构建对应的 pullRequest。pullRequest重点关注 consumerGroup、偏移量，mq，pq等信息
+                        // 新分配的，也标记变化
                         changed = true;
                     }
                 } else {// 如果拉取偏移失败了，说明这个队列存在问题，不会添加到processQueueTable

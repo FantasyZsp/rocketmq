@@ -32,6 +32,10 @@ public class SubscriptionData implements Comparable<SubscriptionData> {
     private String topic;
     private String subString;
     private Set<String> tagsSet = new HashSet<String>();
+    /**
+     * tagsSet对应的hashcode集合，用于服务端过滤。
+     * 由于是hashcode过滤，可能存在hash冲突，所以客户端仍需要使用 tagsSet | SUB_ALL 精确匹配。
+     */
     private Set<Integer> codeSet = new HashSet<Integer>();
     private long subVersion = System.currentTimeMillis();
     private String expressionType = ExpressionType.TAG;

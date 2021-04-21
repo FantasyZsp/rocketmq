@@ -627,7 +627,6 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 // 根据 defaultMQPushConsumer 的配置获取或者创建一个 MQClientInstance 实例. DefaultMQPushConsumer继承了 ClientConfig
                 // 当第一次调用此方法时，MQClientManager#factoryTable中并没有对应实例，会进行创建。
                 // clientId的生成参考 ClientConfig.buildMQClientId，也就是 ip@instanceName@unitName。unitName没有时不拼接
-                // TODO 了解 MQClientInstance 作用
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQPushConsumer, this.rpcHook);
 
                 // 设置 rebalanceImpl属性。构造时并不能保证值存在。所以这时候设置
@@ -675,7 +674,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 this.consumeMessageService.start();
 
                 // 注册当前消费者到对应的消费组。
-                // MQClientInstance.consumerTable维护了 消费组到消费者的映射关系。同个mQClientFactory中，一个消费组只存在一个消费者。否则就在下面的逻辑抛错。
+                // MQClientInstance.consumerTable维护了 消费组到消费者的映射关系。
+                // 同个mQClientFactory中，一个消费组只存在一个消费者。否则就在下面的逻辑抛错。
                 boolean registerOK = mQClientFactory.registerConsumer(this.defaultMQPushConsumer.getConsumerGroup(), this);
                 if (!registerOK) {
                     this.serviceState = ServiceState.CREATE_JUST;
