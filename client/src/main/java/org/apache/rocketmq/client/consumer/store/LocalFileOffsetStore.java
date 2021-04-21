@@ -44,8 +44,17 @@ public class LocalFileOffsetStore implements OffsetStore {
         System.getProperty("user.home") + File.separator + ".rocketmq_offsets");
     private final static InternalLogger log = ClientLogger.getLog();
     private final MQClientInstance mQClientFactory;
+    /**
+     * 消费组名称
+     */
     private final String groupName;
+    /**
+     * 存储路径
+     */
     private final String storePath;
+    /**
+     * 内存中的偏移记录
+     */
     private ConcurrentMap<MessageQueue, AtomicLong> offsetTable =
         new ConcurrentHashMap<MessageQueue, AtomicLong>();
 

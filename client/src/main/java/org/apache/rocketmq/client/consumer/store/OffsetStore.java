@@ -16,14 +16,19 @@
  */
 package org.apache.rocketmq.client.consumer.store;
 
-import java.util.Map;
-import java.util.Set;
 import org.apache.rocketmq.client.exception.MQBrokerException;
 import org.apache.rocketmq.client.exception.MQClientException;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 
+import java.util.Map;
+import java.util.Set;
+
 /**
+ *
+ * 消费偏移量存储
+ * 一般会内置一个map，维护队列对应的消费进度；在合适的实际持久化到本地文件或者broker。
+ * 部分方法是为了更新内存中的map。
  * Offset store interface
  */
 public interface OffsetStore {
@@ -33,6 +38,8 @@ public interface OffsetStore {
     void load() throws MQClientException;
 
     /**
+     * 更新内存中维护的消费进度
+     * true 表示 offset 须大于当前的进度才更新
      * Update the offset,store it in memory
      */
     void updateOffset(final MessageQueue mq, final long offset, final boolean increaseOnly);

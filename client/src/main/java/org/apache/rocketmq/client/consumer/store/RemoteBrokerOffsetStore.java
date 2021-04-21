@@ -60,7 +60,7 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
     }
 
     /**
-     * TODO 考察offset对拉取消息的影响
+     * 更新内存中维护的偏移 offsetTable
      */
     @Override
     public void updateOffset(MessageQueue mq, long offset, boolean increaseOnly) {
