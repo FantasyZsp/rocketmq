@@ -349,11 +349,14 @@ public class CommitLog {
                 uniqKey = propertiesMap.get(MessageConst.PROPERTY_UNIQ_CLIENT_MESSAGE_ID_KEYIDX);
 
                 String tags = propertiesMap.get(MessageConst.PROPERTY_TAGS);
+                // 非延时消息，tagsCode对应的是 tags 的 hashcode。
+                // 注意：如果声明的tags是多个，这里也只是算整体的 hashcode， tagsString2tagsCode 方法的 FilterType 参数并没有参与计算。
                 if (tags != null && tags.length() > 0) {
                     tagsCode = MessageExtBrokerInner.tagsString2tagsCode(MessageExt.parseTopicFilterType(sysFlag), tags);
                 }
 
                 // Timing message processing
+                // 延时消息处理逻辑
                 {
                     String t = propertiesMap.get(MessageConst.PROPERTY_DELAY_TIME_LEVEL);
                     if (TopicValidator.RMQ_SYS_SCHEDULE_TOPIC.equals(topic) && t != null) {
@@ -364,6 +367,7 @@ public class CommitLog {
                         }
 
                         if (delayLevel > 0) {
+                            // tagsCode 会转而记录 分发时间而非tag
                             tagsCode = this.defaultMessageStore.getScheduleMessageService().computeDeliverTimestamp(delayLevel,
                                 storeTimestamp);
                         }
@@ -800,6 +804,11 @@ public class CommitLog {
 
     }
 
+    /**
+     * 通过 {@link MappedFile#appendMessage} 将消息写入 commitLog
+     * 然后根据策略配置，进行刷盘和HA处理
+     * 对于延时消息，会备份和调整主题和队列。
+     */
     public PutMessageResult putMessage(final MessageExtBrokerInner msg) {
         // Set the storage time
         msg.setStoreTimestamp(System.currentTimeMillis());
@@ -819,6 +828,7 @@ public class CommitLog {
             || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
             // 处理延时消息
+            // 因为延时消息需要调整主题信息，所以会把 业务主题存储到 PROPERTY_REAL_TOPIC字段。
             if (msg.getDelayTimeLevel() > 0) {
                 // 纠正最大延时等级
                 if (msg.getDelayTimeLevel() > this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel()) {

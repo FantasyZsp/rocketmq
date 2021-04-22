@@ -483,7 +483,7 @@ public class DefaultMessageStore implements MessageStore {
 
     /**
      * 存储消息入口
-     * 存储前是不知道具体的 CommitLog和consumeQueue偏移量的
+     * 存储前是不知道具体的 CommitLog和consumeQueue偏移量的，调用 commitLog.putMessage后可以拿到
      */
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
