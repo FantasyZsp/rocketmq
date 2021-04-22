@@ -742,6 +742,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             try {
                 //for MessageBatch,ID has been set in the generating process
                 if (!(msg instanceof MessageBatch)) {
+                    // 对于 事务消息，其 事务id就是在这里生成
                     MessageClientIDSetter.setUniqID(msg);
                 }
 
@@ -1226,6 +1227,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             throw new MQClientException("tranExecutor is null", null);
         }
 
+        // 事务消息不支持延时
         // ignore DelayTimeLevel parameter
         if (msg.getDelayTimeLevel() != 0) {
             MessageAccessor.clearProperty(msg, MessageConst.PROPERTY_DELAY_TIME_LEVEL);
@@ -1236,6 +1238,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         SendResult sendResult = null;
         // 标记半消息
         MessageAccessor.putProperty(msg, MessageConst.PROPERTY_TRANSACTION_PREPARED, "true");
+        // 记录生产者组名，因为会查会用到，在组中抽一个反查事务状态
         MessageAccessor.putProperty(msg, MessageConst.PROPERTY_PRODUCER_GROUP, this.defaultMQProducer.getProducerGroup());
         try {
             sendResult = this.send(msg);

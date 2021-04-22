@@ -448,7 +448,6 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 return response;
             }
             // 存储半消息
-            // TODO 查看存储逻辑
             putMessageResult = this.brokerController.getTransactionalMessageService().prepareMessage(msgInner);
         } else {
             // 正常存储消息
