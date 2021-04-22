@@ -351,6 +351,7 @@ public class CommitLog {
                 String tags = propertiesMap.get(MessageConst.PROPERTY_TAGS);
                 // 非延时消息，tagsCode对应的是 tags 的 hashcode。
                 // 注意：如果声明的tags是多个，这里也只是算整体的 hashcode， tagsString2tagsCode 方法的 FilterType 参数并没有参与计算。
+                // 因为这里处理的是消息，对于消息而言，只会对应到一个 tag。所以不存在多个tag的问题。
                 if (tags != null && tags.length() > 0) {
                     tagsCode = MessageExtBrokerInner.tagsString2tagsCode(MessageExt.parseTopicFilterType(sysFlag), tags);
                 }

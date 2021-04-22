@@ -660,6 +660,7 @@ public class DefaultMessageStore implements MessageStore {
                                 }
                             }
 
+                            // 使用 ConsumeQueue中 记录的 hashCode过滤
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByConsumeQueue(isTagsCodeLegal ? tagsCode : null, extRet ? cqExtUnit : null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -679,6 +680,7 @@ public class DefaultMessageStore implements MessageStore {
                                 continue;
                             }
 
+                            //
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByCommitLog(selectResult.getByteBuffer().slice(), null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -693,7 +695,7 @@ public class DefaultMessageStore implements MessageStore {
                             getResult.addMessage(selectResult);
                             status = GetMessageStatus.FOUND;
                             nextPhyFileStartOffset = Long.MIN_VALUE;
-                        }
+                        } // end for
 
                         if (diskFallRecorded) {
                             long fallBehind = maxOffsetPy - maxPhyOffsetPulling;

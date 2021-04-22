@@ -114,6 +114,11 @@ public class ExpressionMessageFilter implements MessageFilter {
         return true;
     }
 
+    /**
+     * 根据消息属性过滤。
+     * 此时使用的是订阅中给出的 sql表达式 对消息属性进行过滤。
+     * 如果是TAG过滤，直接返回true等待消费端过滤。
+     */
     @Override
     public boolean isMatchedByCommitLog(ByteBuffer msgBuffer, Map<String, String> properties) {
         if (subscriptionData == null) {
