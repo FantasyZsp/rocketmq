@@ -217,6 +217,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     /**
      * 拉取消息。注意：这个方法一旦有了开头，就会无限自行的调用，直到rebalance触发，可能会摘掉一些节点；但也可能添加一些节点。
      * 任何return前，一定有一个拉取任务投递；任何异常处理后，一定也保证投递拉取任务。
+     * <p>
+     * 并发消费和顺序消费的区别就是拉取前需要 锁定队列。
      */
     public void pullMessage(final PullRequest pullRequest) {
         final ProcessQueue processQueue = pullRequest.getProcessQueue();
@@ -270,7 +272,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             return;
         }
 
-        // 流控，提交任务再来
+        // 流控--如果是并发消费，偏移量跨度过大时进行流控
+        // 提交任务再来
         if (!this.consumeOrderly) {
             if (processQueue.getMaxSpan() > this.defaultMQPushConsumer.getConsumeConcurrentlyMaxSpan()) {
                 this.executePullRequestLater(pullRequest, PULL_TIME_DELAY_MILLS_WHEN_FLOW_CONTROL);

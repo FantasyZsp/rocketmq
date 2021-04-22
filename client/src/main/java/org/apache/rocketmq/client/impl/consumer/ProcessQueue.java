@@ -43,6 +43,10 @@ public class ProcessQueue {
     // REBALANCE锁最大存活时间，用于判定是否持有锁
     public final static long REBALANCE_LOCK_MAX_LIVE_TIME =
         Long.parseLong(System.getProperty("rocketmq.client.rebalance.lockMaxLiveTime", "30000"));
+
+    /**
+     * 给消息队列加锁的频率
+     */
     public final static long REBALANCE_LOCK_INTERVAL = Long.parseLong(System.getProperty("rocketmq.client.rebalance.lockInterval", "20000"));
     private final static long PULL_MAX_IDLE_TIME = Long.parseLong(System.getProperty("rocketmq.client.pull.pullMaxIdleTime", "120000"));
     private final InternalLogger log = ClientLogger.getLog();
@@ -78,6 +82,9 @@ public class ProcessQueue {
     private volatile long lastPullTimestamp = System.currentTimeMillis();
     // 上次消费完消息后记录的时间
     private volatile long lastConsumeTimestamp = System.currentTimeMillis();
+    /**
+     * 是否被锁定。用于顺序消费的锁判定。
+     */
     private volatile boolean locked = false;
     // 上次锁定的时间
     private volatile long lastLockTimestamp = System.currentTimeMillis();

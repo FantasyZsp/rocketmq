@@ -16,22 +16,30 @@
  */
 package org.apache.rocketmq.broker.client.rebalance;
 
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.common.message.MessageQueue;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
-import org.apache.rocketmq.common.message.MessageQueue;
 
 public class RebalanceLockManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.REBALANCE_LOCK_LOGGER_NAME);
+    /**
+     * 所最大存活时间，默认60s。这个值是大于 顺序消费服务定时加锁的间隔的（20s）。
+     */
     private final static long REBALANCE_LOCK_MAX_LIVE_TIME = Long.parseLong(System.getProperty(
         "rocketmq.broker.rebalance.lockMaxLiveTime", "60000"));
     private final Lock lock = new ReentrantLock();
+
+    /**
+     * 消费者组 -> 持有的mq锁map。LockEntry记录了clientId和锁更新时间。
+     */
     private final ConcurrentMap<String/* group */, ConcurrentHashMap<MessageQueue, LockEntry>> mqLockTable =
         new ConcurrentHashMap<String, ConcurrentHashMap<MessageQueue, LockEntry>>(1024);
 
@@ -114,12 +122,23 @@ public class RebalanceLockManager {
         return false;
     }
 
+    /**
+     * 加锁，返回加锁成功的集合。
+     * 之前加过锁的依赖 {@link LockEntry#isLocked(String)} 方法实现
+     *之前没加过锁的
+     * @param group    消费组名，加锁请求来自于 此组
+     * @param mqs      要加锁的mq集合
+     * @param clientId 消费者客户端id
+     * @return 返回加锁成功的集合
+     */
     public Set<MessageQueue> tryLockBatch(final String group, final Set<MessageQueue> mqs,
-        final String clientId) {
+                                          final String clientId) {
         Set<MessageQueue> lockedMqs = new HashSet<MessageQueue>(mqs.size());
         Set<MessageQueue> notLockedMqs = new HashSet<MessageQueue>(mqs.size());
 
         for (MessageQueue mq : mqs) {
+            // 尝试加锁。成功后会更新加锁时间。
+            // 这一步主要处理 已经加过锁的。
             if (this.isLocked(group, mq, clientId)) {
                 lockedMqs.add(mq);
             } else {
@@ -127,6 +146,7 @@ public class RebalanceLockManager {
             }
         }
 
+        // 这里处理没加过锁的。
         if (!notLockedMqs.isEmpty()) {
             try {
                 this.lock.lockInterruptibly();
@@ -156,6 +176,7 @@ public class RebalanceLockManager {
                             continue;
                         }
 
+                        // 这里被其他客户端持有，如果已经过期了，还可以再获取，并添加到 lockedMqs，如果没有过期，就获取失败。
                         String oldClientId = lockEntry.getClientId();
 
                         if (lockEntry.isExpired()) {
